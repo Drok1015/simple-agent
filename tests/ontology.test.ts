@@ -10,7 +10,7 @@ let workspace: string;
 let store: OntologyStore;
 
 const seed = {
-  version: 2,
+  version: 3,
   concepts: [
     { id: "ham", label: "资产业务对象", parent_id: null, description: "根概念" },
     {
@@ -37,6 +37,9 @@ const seed = {
       parent_id: "ham",
       description: "采购申请概念",
       tool: "query_purchase_requisitions",
+      relations: [
+        { target: "project", type: "归属", label: "采购申请归属项目", via: "projectCode" },
+      ],
     },
   ],
   instances: [],
@@ -93,6 +96,32 @@ describe("OntologyStore", () => {
     expect(result.concept.suggested_call).toBeNull();
   });
 
+  it("关系汇总：出边与入边双向返回", async () => {
+    const pr = await store.search("PR");
+    expect(pr.found).toBe(true);
+    if (!pr.found) return;
+    expect(pr.concept.relations).toHaveLength(1);
+    const [outEdge] = pr.concept.relations;
+    expect(outEdge).toMatchObject({
+      target_label: "资产项目",
+      type: "归属",
+      via: "projectCode",
+      inverse: false,
+    });
+
+    // 反向：资产项目 应看到来自采购申请的入边。
+    const project = await store.search("资产项目");
+    expect(project.found).toBe(true);
+    if (!project.found) return;
+    const incoming = project.concept.relations.filter((relation) => relation.inverse);
+    expect(incoming).toHaveLength(1);
+    expect(incoming[0]).toMatchObject({
+      target_label: "采购申请",
+      type: "归属",
+      inverse: true,
+    });
+  });
+
   it("会话中建设：新增概念持久化并带工具映射", async () => {
     const added = await store.addConcept({
       label: "设备类采购",
@@ -132,9 +161,31 @@ describe("OntologyStore", () => {
     expect(badTool.reason).toContain("未知的工具名");
   });
 
+  it("会话中建设支持关联关系，且校验目标存在", async () => {
+    const added = await store.addConcept({
+      label: "工程类采购",
+      parent: "采购申请",
+      tool: "query_purchase_requisitions",
+      relations: [{ target: "资产项目", type: "归属", label: "工程类采购归属项目", via: "projectCode" }],
+    });
+    expect(added.created).toBe(true);
+    if (!added.created) return;
+    expect(added.concept.relations).toHaveLength(1);
+    expect(added.concept.relations[0]).toMatchObject({ target_label: "资产项目", inverse: false });
+
+    const badTarget = await store.addConcept({
+      label: "悬空概念",
+      parent: "采购申请",
+      relations: [{ target: "不存在的概念", type: "关联", label: "悬空关系" }],
+    });
+    expect(badTarget.created).toBe(false);
+    if (badTarget.created) return;
+    expect(badTarget.reason).toContain("关系目标概念不存在");
+  });
+
   it("reset 恢复种子本体并清掉会话中建设的概念", async () => {
     const graph = await store.reset();
-    expect(graph.concepts.some((concept) => concept.label === "设备类采购")).toBe(false);
+    expect(graph.concepts.some((concept) => concept.label === "工程类采购")).toBe(false);
     expect(graph.concepts).toHaveLength(seed.concepts.length);
   });
 });

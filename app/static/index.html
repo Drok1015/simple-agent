@@ -961,6 +961,18 @@
               : `工具映射：${call.tool}`;
           card.append(callRow);
         }
+
+        const relations = concept.relations ?? [];
+        if (relations.length) {
+          const relRow = document.createElement("div");
+          relRow.className = "concept-aliases";
+          relRow.textContent = `关联：${relations
+            .map((relation) =>
+              `${relation.inverse ? "←" : "→"}${relation.type}${relation.target_label}`,
+            )
+            .join("，")}`;
+          card.append(relRow);
+        }
         return card;
       }
 

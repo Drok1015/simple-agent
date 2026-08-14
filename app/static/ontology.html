@@ -420,6 +420,64 @@
           aliasRow.appendChild(chip);
         }
 
+        if (concept.api) {
+          const apiRow = document.createElement("div");
+          apiRow.className = "alias-row";
+          const chip = document.createElement("span");
+          chip.className = "alias";
+          chip.textContent = `接口 · ${concept.api}`;
+          apiRow.appendChild(chip);
+          aliasRow.appendChild(apiRow);
+        }
+
+        // 关联关系：本地解析出边（→）与入边（←），可点击跳转。
+        const conceptByIdLocal = (id) => graph.concepts.find((c) => c.id === id) || null;
+        const outRelations = (concept.relations ?? [])
+          .map((relation) => ({
+            ...relation,
+            target_label: conceptByIdLocal(relation.target)?.label ?? relation.target,
+            target_id: relation.target,
+            inverse: false,
+          }))
+          .filter((relation) => conceptByIdLocal(relation.target));
+        const inRelations = [];
+        for (const other of graph.concepts) {
+          for (const relation of other.relations ?? []) {
+            if (relation.target !== concept.id || other.id === concept.id) continue;
+            inRelations.push({
+              ...relation,
+              target_label: other.label,
+              target_id: other.id,
+              inverse: true,
+            });
+          }
+        }
+        const relations = [...outRelations, ...inRelations];
+        const relationLabel = document.createElement("div");
+        relationLabel.className = "section-label";
+        relationLabel.textContent = `关联关系（${relations.length}）`;
+        const relationRow = document.createElement("div");
+        relationRow.className = "chip-row";
+        if (!relations.length) {
+          const empty = document.createElement("span");
+          empty.className = "chip none";
+          empty.textContent = "暂无关联";
+          relationRow.appendChild(empty);
+        }
+        relations.forEach((relation) => {
+          const chip = document.createElement("button");
+          chip.className = "chip";
+          chip.type = "button";
+          chip.title = relation.label + (relation.via ? `（${relation.via}）` : "");
+          const arrow = relation.inverse ? "←" : "→";
+          chip.textContent = `${arrow} ${relation.type} ${relation.target_label}`;
+          chip.addEventListener("click", () => {
+            selectedId = relation.target_id;
+            renderAll(false);
+          });
+          relationRow.appendChild(chip);
+        });
+
         const childrenLabel = document.createElement("div");
         childrenLabel.className = "section-label";
         childrenLabel.textContent = `直接子类（${children.length}）`;
@@ -466,7 +524,10 @@
           assetList.appendChild(row);
         });
 
-        detailEl.replaceChildren(crumbs, desc, aliasRow, childrenLabel, chipRow, instanceLabel, assetList);
+        detailEl.replaceChildren(
+          crumbs, desc, aliasRow, relationLabel, relationRow,
+          childrenLabel, chipRow, instanceLabel, assetList,
+        );
       }
 
       function renderAll(fresh) {
@@ -474,7 +535,11 @@
         buildDetail();
         if (fresh) {
           const sessionAdded = graph.concepts.filter((c) => !seedConceptIds.has(c.id)).length;
-          treeMeta.textContent = `${graph.concepts.length} 个概念 · ${graph.instances.length} 个实例` +
+          const relationCount = graph.concepts.reduce(
+            (sum, concept) => sum + (concept.relations?.length ?? 0), 0,
+          );
+          treeMeta.textContent =
+            `${graph.concepts.length} 个概念 · ${relationCount} 条关联 · ${graph.instances.length} 个实例` +
             (sessionAdded ? ` · ${sessionAdded} 个会话新增` : "");
         }
       }

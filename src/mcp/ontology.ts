@@ -13,6 +13,17 @@ import { z } from "zod";
  * 这样 MCP 子进程的写入和 Web API 的读取天然共享同一份最新数据。
  */
 
+const relationSchema = z.object({
+  /** 关联目标概念 id。 */
+  target: z.string().min(1),
+  /** 关系类型（自由词）：包含、生成、收货、报账、审批、同步、归属等。 */
+  type: z.string().trim().min(1).max(30),
+  /** 关系的业务含义，例如"子项目发起采购申请"。 */
+  label: z.string().trim().min(1).max(100),
+  /** 外键字段（可选），例如 projectCode。 */
+  via: z.string().trim().min(1).max(64).optional(),
+});
+
 const conceptSchema = z.object({
   id: z.string().min(1),
   label: z.string().trim().min(1).max(50),
@@ -23,6 +34,10 @@ const conceptSchema = z.object({
   tool: z.string().trim().min(1).max(64).optional(),
   /** 调用提示参数：search_ontology 会把最近的 tool/params 作为 suggested_call 返回。 */
   params: z.record(z.string(), z.unknown()).optional(),
+  /** 后端接口提示（学习用）：未暴露为 MCP Tool 的主体标注其真实端点前缀。 */
+  api: z.string().trim().min(1).max(120).optional(),
+  /** 关联关系：本主体指向其他主体的业务链路。 */
+  relations: z.array(relationSchema).max(20).optional(),
 });
 
 const instanceSchema = z.object({
@@ -47,6 +62,16 @@ export interface ConceptPathNode {
   label: string;
 }
 
+export interface RelatedConcept {
+  target_id: string;
+  target_label: string;
+  type: string;
+  label: string;
+  via?: string | undefined;
+  /** 反向关系标识：这条关系记录在对方概念上。 */
+  inverse: boolean;
+}
+
 export interface ConceptSummary {
   id: string;
   label: string;
@@ -57,10 +82,18 @@ export interface ConceptSummary {
   instances: { id: string; label: string; order_id: string }[];
   /** 语义 → 接口的桥梁：沿"自身 → 祖先"找到的第一个工具映射。 */
   suggested_call: { tool: string; params: Record<string, unknown> } | null;
+  /** 后端接口提示（学习用）。 */
+  api: string | null;
+  /** 出边关系 + 入边关系（其他主体指向本主体的链路）。 */
+  relations: RelatedConcept[];
 }
 
 function newId() {
   return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function byIdExists(data: OntologyData, conceptId: string) {
+  return data.concepts.some((concept) => concept.id === conceptId);
 }
 
 export class OntologyStore {
@@ -190,6 +223,40 @@ export class OntologyStore {
     return null;
   }
 
+  /** 汇总双向关系：自身出边 + 全图入边（其他概念指向本概念）。 */
+  private collectRelations(data: OntologyData, conceptId: string): RelatedConcept[] {
+    const byId = this.conceptById(data);
+    const out: RelatedConcept[] = [];
+    const incoming: RelatedConcept[] = [];
+
+    for (const concept of data.concepts) {
+      for (const relation of concept.relations ?? []) {
+        if (concept.id === conceptId) {
+          const target = byId.get(relation.target);
+          if (!target) continue; // 种子治理：悬空目标在加载后不外显
+          out.push({
+            target_id: target.id,
+            target_label: target.label,
+            type: relation.type,
+            label: relation.label,
+            ...(relation.via ? { via: relation.via } : {}),
+            inverse: false,
+          });
+        } else if (relation.target === conceptId) {
+          incoming.push({
+            target_id: concept.id,
+            target_label: concept.label,
+            type: relation.type,
+            label: relation.label,
+            ...(relation.via ? { via: relation.via } : {}),
+            inverse: true,
+          });
+        }
+      }
+    }
+    return [...out, ...incoming];
+  }
+
   summarize(data: OntologyData, concept: OntologyConcept): ConceptSummary {
     const instances = data.instances
       .filter((instance) => instance.concept_id === concept.id)
@@ -205,6 +272,8 @@ export class OntologyStore {
         .map(({ id, label }) => ({ id, label })),
       instances,
       suggested_call: this.resolveToolHint(data, concept),
+      api: concept.api ?? null,
+      relations: this.collectRelations(data, concept.id),
     };
   }
 
@@ -236,6 +305,7 @@ export class OntologyStore {
     aliases?: string[] | undefined;
     tool?: string | undefined;
     params?: Record<string, unknown> | undefined;
+    relations?: { target: string; type: string; label: string; via?: string | undefined }[] | undefined;
   }): Promise<
     | { created: true; concept: ConceptSummary; persisted_to: string }
     | { created: false; reason: string }
@@ -276,6 +346,31 @@ export class OntologyStore {
       };
     }
 
+    // 本体治理：关系目标必须是已存在的概念。
+    const relations = input.relations ?? [];
+    const knownLabels = new Map(
+      data.concepts.flatMap((concept) => [
+        [concept.label, concept.id] as const,
+        ...(concept.aliases ?? []).map((alias) => [alias, concept.id] as const),
+      ]),
+    );
+    const resolvedRelations: { target: string; type: string; label: string; via?: string }[] = [];
+    for (const relation of relations) {
+      const target = knownLabels.get(relation.target) ?? (byIdExists(data, relation.target) ? relation.target : undefined);
+      if (!target) {
+        return {
+          created: false,
+          reason: `关系目标概念不存在：${relation.target}。请先创建目标概念，或使用已有概念名`,
+        };
+      }
+      resolvedRelations.push({
+        target,
+        type: relation.type.trim(),
+        label: relation.label.trim(),
+        ...(relation.via?.trim() ? { via: relation.via.trim() } : {}),
+      });
+    }
+
     const aliases = [...new Set((input.aliases ?? []).map((alias) => alias.trim()).filter(Boolean))];
     const concept: OntologyConcept = {
       id: newId(),
@@ -285,6 +380,7 @@ export class OntologyStore {
       description: input.description?.trim() || `${parent.label} 下的概念，由会话中建设产生。`,
       ...(input.tool?.trim() ? { tool: input.tool.trim() } : {}),
       ...(input.params && Object.keys(input.params).length ? { params: input.params } : {}),
+      ...(resolvedRelations.length ? { relations: resolvedRelations } : {}),
     };
     const next: OntologyData = { ...data, concepts: [...data.concepts, concept] };
     await this.write(next);

@@ -163,7 +163,7 @@ server.registerTool(
   "add_ontology_concept",
   {
     description:
-      "在会话中建设本体：新增一个概念并挂到已有父概念下，可选提供别名、描述、工具映射（tool 必须是业务查询工具名）。写入持久化到 ontology.json，立即影响后续 search_ontology 的 suggested_call。",
+      "在会话中建设本体：新增一个概念并挂到已有父概念下，可选提供别名、描述、工具映射（tool 必须是业务查询工具名）和关联关系（relations 的 target 必须是已有概念）。写入持久化到 ontology.json，立即影响后续 search_ontology 的 suggested_call 与 relations。",
     inputSchema: {
       label: z.string().describe("新概念名称，例如：设备类采购"),
       parent: z.string().describe("父概念名称或别名，必须已存在，例如：采购申请"),
@@ -174,10 +174,23 @@ server.registerTool(
         .optional()
         .describe("概念对应的业务查询工具名，如 query_purchase_requisitions"),
       params: z.record(z.string(), z.unknown()).optional().describe("工具调用提示参数"),
+      relations: z
+        .array(
+          z.object({
+            target: z.string().describe("目标概念名称或别名，必须已存在"),
+            type: z.string().describe("关系类型，如 生成/包含/归属/同步"),
+            label: z.string().describe("关系的业务含义"),
+            via: z.string().optional().describe("外键字段，如 projectCode"),
+          }),
+        )
+        .optional()
+        .describe("与其他主体的关联关系"),
     },
   },
-  async ({ label, parent, description, aliases, tool, params }) =>
-    toolResult(await ontology.addConcept({ label, parent, description, aliases, tool, params })),
+  async ({ label, parent, description, aliases, tool, params, relations }) =>
+    toolResult(
+      await ontology.addConcept({ label, parent, description, aliases, tool, params, relations }),
+    ),
 );
 
 server.registerTool(

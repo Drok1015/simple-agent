@@ -1,142 +1,509 @@
 {
-  "version": 2,
+  "version": 3,
   "concepts": [
     {
       "id": "ham-business",
       "label": "资产业务对象",
       "parent_id": null,
-      "description": "资产中台（ham_ui）业务对象总览。实例不再静态维护，全部业务数据通过真实接口按需返回。"
+      "description": "资产中台（ham_ui）业务对象总览：从项目立项、采购执行到资产全生命周期管理与外部系统集成。数据全部通过真实接口按需返回。"
     },
     {
-      "id": "project",
-      "label": "资产项目",
-      "aliases": ["项目", "投资项目"],
+      "id": "project-domain",
+      "label": "资产项目域",
+      "aliases": ["项目域"],
       "parent_id": "ham-business",
-      "description": "资产投资的载体，分父项目/子项目两级。核心字段：项目编码、项目名称、项目状态、公司编码 orgCode、项目预算 projectTotalAmount、项目经理、计划起止日期。按状态查用 query_parent_projects / query_child_projects。",
-      "tool": "query_parent_projects"
+      "description": "投资立项到预算管控：父项目（立项主体）拆分子项目（执行单元），子项目挂科目目录并控制可否发起采购。",
+      "api": "ham-project"
     },
     {
       "id": "parent-project",
       "label": "父项目",
-      "aliases": ["主项目"],
-      "parent_id": "project",
-      "description": "项目主体，编码前缀对应 parentProjectCode。查询工具 query_parent_projects，常用过滤字段：parentProjectCode、parentProjectName、orgCode、hbcParentProjectCode、projectManager；父项目查子项目用 query_child_projects 传 parent_project_code。",
+      "aliases": ["主项目", "立项项目"],
+      "parent_id": "project-domain",
+      "description": "项目立项主体。核心字段：parentProjectCode、parentProjectName、parentProjectStatus(2可审批/3审批中/4退回/8取消/9生效)、orgCode、projectTotalAmount、项目经理、hbcParentProjectCode(HBC关联)。查询工具 query_parent_projects。",
       "tool": "query_parent_projects",
-      "params": { "filters": { "parentProjectName": "" } }
+      "relations": [
+        { "target": "child-project", "type": "包含", "label": "父项目包含多个子项目", "via": "parentProjectCode" },
+        { "target": "hbc", "type": "同步", "label": "父项目与 HBC 系统双向同步（推送/退回）", "via": "hbcParentProjectCode" },
+        { "target": "process-instance", "type": "审批", "label": "父项目提交审批流（startParentProjectProcess）", "via": "processInstanceId" }
+      ]
     },
     {
       "id": "child-project",
       "label": "子项目",
-      "aliases": ["明细项目"],
-      "parent_id": "project",
-      "description": "父项目下的执行单元，字段同项目（projectCode/projectName/projectStatus/projectTotalAmount），canStart=Y 时可发起采购申请。查询工具 query_child_projects。",
-      "tool": "query_child_projects"
+      "aliases": ["明细项目", "执行项目"],
+      "parent_id": "project-domain",
+      "description": "父项目下的执行单元，canStart=Y 时可发起采购申请。字段同项目结构（projectCode/projectStatus/projectTotalAmount）。查询工具 query_child_projects，可传 parent_project_code 走父查子接口。",
+      "tool": "query_child_projects",
+      "relations": [
+        { "target": "purchase-requisition", "type": "发起", "label": "子项目发起采购申请单", "via": "projectCode" },
+        { "target": "project-catalog", "type": "限定", "label": "子项目限定可采购的科目目录", "via": "projectNo" }
+      ]
     },
     {
       "id": "project-status",
       "label": "项目状态",
-      "parent_id": "project",
-      "description": "父/子项目共用状态枚举：2=项目可审批、3=项目审批中、4=项目退回、8=项目取消、9=项目生效。查询时把状态词传给 query_parent_projects 的 status 参数即可自动转码。"
+      "parent_id": "project-domain",
+      "description": "父/子项目共用状态枚举：2=项目可审批、3=项目审批中、4=项目退回、8=项目取消、9=项目生效。查询时把状态词传给 query_* 工具的 status 参数自动转码。"
     },
     {
-      "id": "project-approved",
-      "label": "项目生效",
-      "aliases": ["已生效项目", "生效"],
-      "parent_id": "project-status",
-      "description": "parentProjectStatus=9，项目审批完成，可继续发起采购。查询：query_parent_projects status=生效。",
-      "tool": "query_parent_projects",
-      "params": { "status": "生效" }
+      "id": "project-catalog",
+      "label": "项目科目目录",
+      "aliases": ["物料目录", "三级分类"],
+      "parent_id": "project-domain",
+      "description": "子项目允许采购的物料三级分类（firstCategory/secondCategory/thirdCategory）。接口 getCatalogListByProjectCode。",
+      "api": "ham-project/project-subject"
     },
     {
-      "id": "project-approving",
-      "label": "项目审批中",
-      "aliases": ["审批中"],
-      "parent_id": "project-status",
-      "description": "parentProjectStatus=3，流程在途。查询：query_parent_projects status=审批中。",
-      "tool": "query_parent_projects",
-      "params": { "status": "审批中" }
-    },
-    {
-      "id": "project-returned",
-      "label": "项目退回",
-      "aliases": ["退回"],
-      "parent_id": "project-status",
-      "description": "parentProjectStatus=4，需要修改后重新提交。查询：query_parent_projects status=退回。",
-      "tool": "query_parent_projects",
-      "params": { "status": "退回" }
-    },
-    {
-      "id": "procurement",
-      "label": "采购",
-      "aliases": ["采购管理", "procurement"],
+      "id": "procurement-domain",
+      "label": "采购域",
       "parent_id": "ham-business",
-      "description": "从项目预算到合同支付的采购全链路对象：采购申请 → 采购合同 → 支付节点；合同收货后形成资产。"
+      "description": "从申请到付款的采购全链路：采购申请单 → 采购合同 → 合同清单/支付节点 → 报账单。",
+      "api": "ham-purchasing"
     },
     {
       "id": "purchase-requisition",
-      "label": "采购申请",
-      "aliases": ["采购申请单", "采购单", "PR"],
-      "parent_id": "procurement",
-      "description": "从子项目发起的采购请求。核心字段：采购编码 requisitionCode、采购单名称 requisitionName、状态 requisitionStatus、项目编码 projectCode、供应商 supplierCode/supplierName、采购金额 requisitionAmount、申请人 applicantName。查询工具 query_purchase_requisitions。",
-      "tool": "query_purchase_requisitions"
+      "label": "采购申请单",
+      "aliases": ["采购申请", "采购单", "PR", "请购单"],
+      "parent_id": "procurement-domain",
+      "description": "从子项目发起的采购请求。核心字段：requisitionCode、requisitionName、requisitionStatus(D草稿/P审批中/A已审批/R已退回/C已取消)、projectCode、supplierCode/supplierName、requisitionAmount、明细行(物料)。查询工具 query_purchase_requisitions。",
+      "tool": "query_purchase_requisitions",
+      "relations": [
+        { "target": "purchase-contract", "type": "生成", "label": "审批通过的采购申请生成采购合同", "via": "requisitionCode" },
+        { "target": "requisition-detail", "type": "包含", "label": "申请单包含多条物料明细行", "via": "purchaseRequisitionDetailVOList" },
+        { "target": "process-instance", "type": "审批", "label": "采购申请提交审批（updateRequisitionAudit）", "via": "processInstanceId" }
+      ]
+    },
+    {
+      "id": "requisition-detail",
+      "label": "采购明细行",
+      "aliases": ["申请明细"],
+      "parent_id": "purchase-requisition",
+      "description": "采购申请的物料行：materialCode、materialDescription、standardModel、materialNumber、materialUom、materialUnit、materialAmount、materialCurrency。",
+      "api": "ham-purchasing/purchase-requisition"
     },
     {
       "id": "requisition-status",
       "label": "采购申请状态",
       "parent_id": "purchase-requisition",
-      "description": "字母码枚举：D=草稿、P=审批中、A=已审批、R=已退回、C=已取消（以系统字典为准）。查询时把状态词传给 query_purchase_requisitions 的 status 参数。"
-    },
-    {
-      "id": "requisition-draft",
-      "label": "采购申请草稿",
-      "aliases": ["草稿"],
-      "parent_id": "requisition-status",
-      "description": "requisitionStatus=D，尚未提交流程。查询：query_purchase_requisitions status=草稿。",
-      "tool": "query_purchase_requisitions",
-      "params": { "status": "草稿" }
+      "description": "字母码枚举：D=草稿、P=审批中、A=已审批、R=已退回、C=已取消。查询时把状态词传给 query_purchase_requisitions 的 status 参数自动转码。"
     },
     {
       "id": "purchase-contract",
       "label": "采购合同",
-      "aliases": ["合同"],
-      "parent_id": "procurement",
-      "description": "由采购申请单生成的合同，含合同明细与支付节点。查询工具 query_purchase_contracts（过滤字段透传，如 contractCode、projectCode）。",
-      "tool": "query_purchase_contracts"
+      "aliases": ["合同", "主合同"],
+      "parent_id": "procurement-domain",
+      "description": "由采购申请生成（或无申请单直签）。核心字段：purchaseContractNumber、lawContractNumber(法务)、状态、净额/税额、供应商、合同期限。支持变更(change)与取消(cancel)。查询工具 query_purchase_contracts。",
+      "tool": "query_purchase_contracts",
+      "relations": [
+        { "target": "contract-checklist", "type": "包含", "label": "合同包含资产清单明细", "via": "purchaseContractNumber" },
+        { "target": "pay-node", "type": "分期", "label": "合同拆分多个支付节点", "via": "purchaseContractNumber" },
+        { "target": "receiving-order", "type": "收货", "label": "按合同收货生成收货单", "via": "purchaseContractNumber+orgCode" },
+        { "target": "payment-bill", "type": "报账", "label": "合同发起资产报账单", "via": "contractCode" },
+        { "target": "law", "type": "同步", "label": "采购合同提交法务系统（老省事）", "via": "lawContractNumber" }
+      ]
+    },
+    {
+      "id": "contract-checklist",
+      "label": "合同清单",
+      "aliases": ["合同资产清单", "合同明细"],
+      "parent_id": "purchase-contract",
+      "description": "合同的资产品目明细（物料级），是收货与转资的依据；SAP 固定资产卡片与采购订单由此生成。接口 purchase-contract-checklist。",
+      "api": "ham-purchasing/purchase-contract-checklist",
+      "relations": [
+        { "target": "sap", "type": "生成", "label": "合同清单生成 SAP 采购订单/固定资产卡片", "via": "contractCreateAssetsCard" }
+      ]
     },
     {
       "id": "pay-node",
       "label": "支付节点",
       "aliases": ["付款节点"],
-      "parent_id": "procurement",
-      "description": "采购合同的分期付款计划（purchase-contract-pay-node）。当前 Agent 未开放独立查询工具，需要时经合同详情在 ham_ui 中查看。"
+      "parent_id": "purchase-contract",
+      "description": "合同的分期付款计划，含超期统计报表（expiredPayNodeStatistics）。接口 purchase-contract-pay-node。",
+      "api": "ham-purchasing/purchase-contract-pay-node"
     },
     {
-      "id": "asset",
-      "label": "资产",
-      "aliases": ["收货资产", "设备资产"],
-      "parent_id": "ham-business",
-      "description": "合同收货后登记的资产实例（receiving-info）。按合同查询工具 query_assets_by_contract，filters 必须同时传 purchaseContractNumber（合同号）和 orgCode（公司编码）。",
-      "tool": "query_assets_by_contract"
+      "id": "payment-bill",
+      "label": "报账单",
+      "aliases": ["资产报账单", "付款单"],
+      "parent_id": "procurement-domain",
+      "description": "合同付款的报账凭证（ics-contract，erpBillId），对接 EAM 资产账单与 RAAS 报账系统。",
+      "api": "ham-purchasing/ics-contract",
+      "relations": [
+        { "target": "raas", "type": "对接", "label": "报账单跳转 RAAS 报账系统处理", "via": "erpBillId" }
+      ]
     },
     {
-      "id": "basedata",
-      "label": "基础数据",
+      "id": "asset-domain",
+      "label": "资产域",
       "parent_id": "ham-business",
-      "description": "采购与项目共用的字典数据：供应商（base-dict-info type=4）、物料三级分类（project-subject 目录）、计量单位。当前不开放独立查询工具。"
+      "description": "资产全生命周期：收货入账 → 台账 → 转资 → 处置（销售/报废/维修/调拨）与盘点。",
+      "api": "ham-assets"
+    },
+    {
+      "id": "receiving-order",
+      "label": "收货单",
+      "aliases": ["资产到货", "收货"],
+      "parent_id": "asset-domain",
+      "description": "按合同收货的凭证，receivingOrderCode；收货后资产进入台账。查询工具 query_assets_by_contract（filters 需 purchaseContractNumber+orgCode）。",
+      "tool": "query_assets_by_contract",
+      "relations": [
+        { "target": "asset-ledger", "type": "生成", "label": "收货资产生成资产台账记录", "via": "objCode" },
+        { "target": "process-instance", "type": "审批", "label": "收货单走审批流（auditReceiveInfoProcess）", "via": "processInstanceId" }
+      ]
+    },
+    {
+      "id": "asset-ledger",
+      "label": "资产台账",
+      "aliases": ["资产", "固定资产"],
+      "parent_id": "asset-domain",
+      "description": "资产主数据（objCode/objName），含分类、公司、工厂、位置、状态、折旧方法等；所有资产处置单据的操作对象。接口 asset-basic/page。",
+      "api": "ham-assets/asset-basic",
+      "relations": [
+        { "target": "transfer-order", "type": "转资", "label": "台账资产经预转资/待转资形成转资单", "via": "objCode" },
+        { "target": "sale-order", "type": "销售", "label": "台账资产可发起销售处置", "via": "objCode" },
+        { "target": "scrap-order", "type": "报废", "label": "台账资产可发起报废处置", "via": "objCode" },
+        { "target": "repair-order", "type": "维修", "label": "台账资产可发起维修工单", "via": "objCode" },
+        { "target": "move-order", "type": "调拨", "label": "台账资产可跨组织调拨", "via": "objCode" },
+        { "target": "check-plan", "type": "盘点", "label": "台账资产纳入盘点计划清点", "via": "objCode" }
+      ]
+    },
+    {
+      "id": "asset-category",
+      "label": "资产分类",
+      "aliases": ["物料分类", "三级分类"],
+      "parent_id": "asset-ledger",
+      "description": "资产/物料的三级分类体系（firstCategory 如 160101 固定资产 → 二级 → 三级），贯穿合同清单、收货、台账与报表。",
+      "api": "ham-basedata/base-mapping-subject-info"
+    },
+    {
+      "id": "transfer-order",
+      "label": "转资单",
+      "aliases": ["转资", "资产转资"],
+      "parent_id": "asset-domain",
+      "description": "在建工程转固的流程单据：预转资(prerecorded) → 待转资(capitalization) → 转资单(asset-transform-order)，审批后生成 SAP 凭证。接口 asset-transform-order。",
+      "api": "ham-assets/asset-transform-order",
+      "relations": [
+        { "target": "sap", "type": "生成", "label": "转资生成 SAP 资产凭证", "via": "transformDetailCreatePurchaseOrder" }
+      ]
+    },
+    {
+      "id": "sale-order",
+      "label": "销售单",
+      "aliases": ["资产销售"],
+      "parent_id": "asset-domain",
+      "description": "资产变卖处置单（asset-sale-order），从可销售资产中挑选，走审批流。",
+      "api": "ham-assets/asset-sale-order"
+    },
+    {
+      "id": "scrap-order",
+      "label": "报废单",
+      "aliases": ["资产报废"],
+      "parent_id": "asset-domain",
+      "description": "资产报废处置单（asset-scrap），支持作废/删除与影像查看。",
+      "api": "ham-assets/asset-scrap"
+    },
+    {
+      "id": "repair-order",
+      "label": "维修单",
+      "aliases": ["维修", "维修工单"],
+      "parent_id": "asset-domain",
+      "description": "资产维修工单（asset-repair-order），含维修方案上传与移动端审核。",
+      "api": "ham-assets/asset-repair-order"
+    },
+    {
+      "id": "move-order",
+      "label": "调拨单",
+      "aliases": ["资产调拨", "调拨"],
+      "parent_id": "asset-domain",
+      "description": "资产跨组织/跨部门调拨单（asset-move），调拨部门由 base-exec-move 配置。",
+      "api": "ham-assets/asset-move"
+    },
+    {
+      "id": "check-plan",
+      "label": "盘点计划",
+      "aliases": ["盘点"],
+      "parent_id": "asset-domain",
+      "description": "资产盘点计划（asset-check），可拆分为多个盘点单（check-detail），产出盘点差异（check-diff）并走差异处理审批。",
+      "api": "ham-assets/asset-check",
+      "relations": [
+        { "target": "check-detail", "type": "拆分", "label": "盘点计划拆分为盘点单执行", "via": "checkOrderNo" },
+        { "target": "check-diff", "type": "产出", "label": "盘点结束后生成差异单", "via": "checkDetailNo" }
+      ]
+    },
+    {
+      "id": "check-detail",
+      "label": "盘点单",
+      "parent_id": "check-plan",
+      "description": "盘点执行单元（asset-check-detail），提交审批后清点资产明细（check-object）。",
+      "api": "ham-assets/asset-check-detail"
+    },
+    {
+      "id": "check-diff",
+      "label": "盘点差异",
+      "aliases": ["差异单"],
+      "parent_id": "check-plan",
+      "description": "盘盈盘亏差异（asset-check-diff），差异资产明细逐条处理并提交审批。",
+      "api": "ham-assets/asset-check-diff"
+    },
+    {
+      "id": "basedata-domain",
+      "label": "基础数据域",
+      "parent_id": "ham-business",
+      "description": "全平台共用的主数据与字典：组织、供应商、科目、单位、税种、汇率、编码规则等。",
+      "api": "ham-basedata"
+    },
+    {
+      "id": "org",
+      "label": "公司",
+      "aliases": ["组织", "公司编码", "法人公司"],
+      "parent_id": "basedata-domain",
+      "description": "法人公司主数据（orgCode/orgName），几乎所有业务单据的归属维度；组织流程配置（base-bpm-org-config）决定审批路由。",
+      "api": "ham-basedata/base-org-info",
+      "relations": [
+        { "target": "parent-project", "type": "归属", "label": "项目按 orgCode 归属公司", "via": "orgCode" },
+        { "target": "purchase-requisition", "type": "归属", "label": "采购申请按 orgCode 归属公司", "via": "orgCode" },
+        { "target": "asset-ledger", "type": "归属", "label": "资产按 orgCode 归属公司", "via": "orgCode" }
+      ]
     },
     {
       "id": "supplier",
       "label": "供应商",
-      "aliases": ["supplier"],
-      "parent_id": "basedata",
-      "description": "供应商字典，编码 supplierCode。可在 query_purchase_requisitions 的 filters 中按 supplierCode 过滤采购单。"
+      "aliases": ["供应商编码"],
+      "parent_id": "basedata-domain",
+      "description": "供应商主数据（base-vendor-info / base-dict-info type=4），采购申请与合同的对端。",
+      "api": "ham-basedata/base-vendor-info",
+      "relations": [
+        { "target": "purchase-requisition", "type": "供应", "label": "供应商承接采购申请", "via": "supplierCode" },
+        { "target": "purchase-contract", "type": "签约", "label": "供应商签订采购合同", "via": "supplierCode" }
+      ]
     },
     {
-      "id": "material",
-      "label": "物料",
-      "aliases": ["物料分类", "material"],
-      "parent_id": "basedata",
-      "description": "采购申请明细行的物料三级分类（firstCategory/secondCategory/thirdCategory）。明细字段：materialCode、materialDescription、standardModel、materialNumber、materialUom、materialAmount。"
+      "id": "subject",
+      "label": "科目",
+      "aliases": ["费用项目"],
+      "parent_id": "basedata-domain",
+      "description": "预算科目与费用项目（base-subject-info / base-cost-account-info），项目预算按科目拆分。",
+      "api": "ham-basedata/base-subject-info"
+    },
+    {
+      "id": "uom",
+      "label": "计量单位",
+      "aliases": ["数量单位"],
+      "parent_id": "basedata-domain",
+      "description": "SAP 数量单位映射（base-mapping-unit-info），采购明细行的 materialUom。",
+      "api": "ham-basedata/base-mapping-unit-info"
+    },
+    {
+      "id": "finance-dict",
+      "label": "财务字典",
+      "parent_id": "basedata-domain",
+      "description": "税种（base-tax-info）、折旧方法（base-depreciation-info）、汇率（base-exchange-rate）、币种等财务参数。"
+    },
+    {
+      "id": "asset-dict",
+      "label": "资产字典",
+      "parent_id": "basedata-domain",
+      "description": "资产状态（base-mapping-assets-status）、资产位置（base-mapping-assets-localtion）、变动方式（base-mapping-assets-change-type）等资产维度字典。"
+    },
+    {
+      "id": "purchase-org-dict",
+      "label": "采购组织字典",
+      "parent_id": "basedata-domain",
+      "description": "采购组（base-purchase-group）、采购组织（base-purchase-org）、招采系统（base-zc-info）、BUFU 映射（base-bu-fu-info）。"
+    },
+    {
+      "id": "location",
+      "label": "园区工厂",
+      "aliases": ["园区", "工厂"],
+      "parent_id": "basedata-domain",
+      "description": "园区（base-area-info）与工厂（base-factory-info）主数据，资产位置与归属维度。",
+      "api": "ham-basedata/base-area-info"
+    },
+    {
+      "id": "serial-rule",
+      "label": "编码规则",
+      "aliases": ["单号规则"],
+      "parent_id": "basedata-domain",
+      "description": "各类单据编码规则（base-serial-rule）与变量（base-serial-variable），决定 FP/P/CG/HT/ZC 等单号生成。",
+      "api": "ham-basedata/base-serial-rule"
+    },
+    {
+      "id": "data-dict",
+      "label": "数据字典",
+      "parent_id": "basedata-domain",
+      "description": "通用字典类型与字典值（base-dict-type / base-dict-info），如下拉枚举。",
+      "api": "ham-basedata/base-dict-type"
+    },
+    {
+      "id": "workflow-domain",
+      "label": "流程域",
+      "aliases": ["审批域", "工作流"],
+      "parent_id": "ham-business",
+      "description": "基于 Flowable/BPMS 的统一审批：所有业务单据（项目/采购/合同/收货/转资/处置/盘点）共用一套流程引擎。",
+      "api": "ham-basedata/bpms"
+    },
+    {
+      "id": "todo-task",
+      "label": "待办任务",
+      "aliases": ["待办"],
+      "parent_id": "workflow-domain",
+      "description": "当前用户待审批任务（getTodoList），bizKey 关联业务单据编号。",
+      "api": "ham-basedata/bpms/getTodoList"
+    },
+    {
+      "id": "done-task",
+      "label": "已办任务",
+      "aliases": ["已办"],
+      "parent_id": "workflow-domain",
+      "description": "已完成审批任务（getCompletedTaskList）。",
+      "api": "ham-basedata/bpms/getCompletedTaskList"
+    },
+    {
+      "id": "mine-flow",
+      "label": "我发起的",
+      "parent_id": "workflow-domain",
+      "description": "当前用户发起的流程（myFlow）。",
+      "api": "ham-basedata/bpms/myFlow"
+    },
+    {
+      "id": "process-instance",
+      "label": "流程实例",
+      "aliases": ["审批流", "流程"],
+      "parent_id": "workflow-domain",
+      "description": "一次审批对应的流程实例（processInstanceId），节点意见（getNodeOpinionByProcessInstanceId）与流程图可视化基于它。",
+      "api": "ham-basedata/flow-process-instance",
+      "relations": [
+        { "target": "process-task", "type": "包含", "label": "流程实例包含多个审批任务节点", "via": "processInstanceId" }
+      ]
+    },
+    {
+      "id": "process-task",
+      "label": "流程任务",
+      "aliases": ["审批任务"],
+      "parent_id": "process-instance",
+      "description": "流程节点任务（flow-process-instance-task），支持转派（transferTask/changeCurrentUser）。",
+      "api": "ham-basedata/flow-process-instance-task"
+    },
+    {
+      "id": "report-domain",
+      "label": "报表域",
+      "parent_id": "ham-business",
+      "description": "资产与采购统计分析：月度/年度资产统计、Model-1/2 报表、租户与公司级大屏、设备资产三级下钻。",
+      "api": "ham-basedata/report"
+    },
+    {
+      "id": "asset-report",
+      "label": "资产报表",
+      "parent_id": "report-domain",
+      "description": "资产数量与价值统计：getMonthYearSum、Model-1/Model-2（项目/合同下钻）、租户与公司级大屏、二级/三级分类设备资产报表。",
+      "api": "ham-basedata/report"
+    },
+    {
+      "id": "purchase-report",
+      "label": "采购报表",
+      "parent_id": "report-domain",
+      "description": "采购分析：立项统计（projectStatistics）、项目合同（projectWithContract）、合同资产（contractWithAsset）、支付节点超期（expiredPayNode）。",
+      "api": "ham-purchasing/purchaseReport"
+    },
+    {
+      "id": "org-auth-domain",
+      "label": "组织权限域",
+      "parent_id": "ham-business",
+      "description": "平台用户与权限：用户（hamUser）、角色（hamRole）、执行组织（hamExecDept）、租户（hamTenantDomain）与 CAS 单点登录。",
+      "api": "ham-basedata"
+    },
+    {
+      "id": "user",
+      "label": "用户",
+      "aliases": ["用户管理"],
+      "parent_id": "org-auth-domain",
+      "description": "平台用户（hamUser），工号即 accountNumber；与角色绑定（grantRole）。",
+      "api": "ham-basedata/hamUser",
+      "relations": [
+        { "target": "role", "type": "绑定", "label": "用户绑定角色获得权限", "via": "grantRole" }
+      ]
+    },
+    {
+      "id": "role",
+      "label": "角色",
+      "aliases": ["BPM角色"],
+      "parent_id": "org-auth-domain",
+      "description": "功能角色与 BPM 审批角色（hamRole），决定菜单权限与审批人路由。",
+      "api": "ham-basedata/hamRole"
+    },
+    {
+      "id": "tenant",
+      "label": "租户",
+      "parent_id": "org-auth-domain",
+      "description": "多租户主体（hamTenantDomain），域名映射租户（getTenantIdByDomain），数据按 tenantId 隔离。",
+      "api": "ham-basedata/hamTenantDomain",
+      "relations": [
+        { "target": "org", "type": "包含", "label": "租户包含多家公司", "via": "tenantId" }
+      ]
+    },
+    {
+      "id": "integration-domain",
+      "label": "外部系统集成",
+      "aliases": ["集成域"],
+      "parent_id": "ham-business",
+      "description": "资产中台与周边系统的集成关系：HBC 立项、NC 财务、SAP 转固、法务合同、EAM、RAAS 报账、ihaier 移动端。"
+    },
+    {
+      "id": "hbc",
+      "label": "HBC系统",
+      "aliases": ["HBC"],
+      "parent_id": "integration-domain",
+      "description": "集团立项系统：父项目从这里申报（hbcParentProjectCode），支持推送（pushHbc）与退回。",
+      "api": "ham-project/parent-project/pushHbc"
+    },
+    {
+      "id": "nc",
+      "label": "NC系统",
+      "aliases": ["NC"],
+      "parent_id": "integration-domain",
+      "description": "财务 NC 系统：项目信息同步（pushProjectInfo）与 NC 公司立项配置（base-nc-org-info）。",
+      "api": "ham-project/nc-project"
+    },
+    {
+      "id": "sap",
+      "label": "SAP系统",
+      "aliases": ["SAP"],
+      "parent_id": "integration-domain",
+      "description": "SAP 财务核心：合同清单生成采购订单/固定资产卡片，转资生成资产凭证；失败进 sap-error 重试。",
+      "api": "ham-assets/sap-error"
+    },
+    {
+      "id": "law",
+      "label": "法务系统",
+      "aliases": ["老省事", "法务"],
+      "parent_id": "integration-domain",
+      "description": "合同法务平台（老省事）：采购合同同步签订（syncToLaw），lawContractNumber 关联合同比对（getInfoCompare）。",
+      "api": "ham-purchasing/purchase-contract/syncToLaw"
+    },
+    {
+      "id": "eam",
+      "label": "EAM系统",
+      "aliases": ["EAM"],
+      "parent_id": "integration-domain",
+      "description": "企业资产管理系统：报账单审批 EAM 资产账单（approvalEAMAssetBill/saveEAMAssetBill）。",
+      "api": "ham-purchasing/ics-contract"
+    },
+    {
+      "id": "raas",
+      "label": "RAAS报账",
+      "aliases": ["报账系统"],
+      "parent_id": "integration-domain",
+      "description": "费用报账平台（ics-raas）：资产报账/付款列表与详情跳转。",
+      "api": "ics-raas"
+    },
+    {
+      "id": "ihaier",
+      "label": "ihaier移动端",
+      "aliases": ["移动端"],
+      "parent_id": "integration-domain",
+      "description": "移动审批入口：各业务（项目/采购/收货/转资/销售/报废/维修/盘点/调拨）的移动端审核消息（bpms-remote/call/*）。",
+      "api": "ham-assets/bpms-remote"
     }
   ],
   "instances": []
