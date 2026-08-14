@@ -90,7 +90,7 @@ export class HamClient {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.token}`,
       "Access-Token": this.token,
-      lang: "zh_CN",
+      lang: "zh",
     };
     if (this.tenantId) headers["cz-tenantID"] = this.tenantId;
 

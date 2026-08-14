@@ -137,10 +137,10 @@ server.registerTool(
   "query_assets_by_contract",
   {
     description:
-      "按合同查询收货资产（真实接口 ham-assets/receiving-info/selectByContract）。在 filters 中传合同标识，如 contractId 或 contractCode。",
+      "按合同查询收货资产（真实接口 ham-assets/receiving-info/selectByContract）。filters 必须同时传合同号与公司编码：{\"purchaseContractNumber\": \"HT2026-...\", \"orgCode\": \"0NJ0\"}（可先查采购合同拿到这两个字段）。",
     inputSchema: {
       ...pageInput,
-      filters: z.record(z.string(), z.unknown()).describe("合同过滤条件，如 {\"contractId\": \"...\"}"),
+      filters: z.record(z.string(), z.unknown()).describe("合同过滤条件，如 {\"purchaseContractNumber\": \"HT2026-...\", \"orgCode\": \"0NJ0\"}"),
     },
   },
   async (query) => {

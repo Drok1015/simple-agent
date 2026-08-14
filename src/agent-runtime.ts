@@ -29,6 +29,13 @@ const systemPrompt = `
 
 type DeepAgent = Awaited<ReturnType<typeof createDeepAgent>>;
 
+/** 清洗模型偶发泄漏的思维标记（如 <|begin_of_box|>、</think>），避免进入聊天正文。 */
+const THINK_MARKERS = /<\|begin_of_box\|>|<\|end_of_box\|>|<\/?think>/g;
+
+function stripThinkMarkers(text: string) {
+  return text.replace(THINK_MARKERS, "");
+}
+
 export class AgentRuntime {
   private agent: DeepAgent | undefined;
   private client: MultiServerMCPClient | undefined;
@@ -139,7 +146,13 @@ export class AgentRuntime {
       const event = projectProtocolEvent(protocolEvent);
       if (!event) continue;
 
-      if (event.type === "token") answer += event.delta;
+      if (event.type === "token") {
+        const delta = stripThinkMarkers(event.delta);
+        if (!delta) continue;
+        answer += delta;
+        yield { ...event, delta };
+        continue;
+      }
       if (event.type === "tool") {
         if (event.name) toolNamesById.set(event.id, event.name);
         const name = event.name ?? toolNamesById.get(event.id) ?? "unknown_tool";
@@ -157,22 +170,24 @@ export class AgentRuntime {
     for (const message of [...messages].reverse()) {
       if (!isAIMessage(message)) continue;
       if (typeof message.content === "string" && message.content.trim()) {
-        return message.content.trim();
+        const cleaned = stripThinkMarkers(message.content).trim();
+        if (cleaned) return cleaned;
       }
       if (Array.isArray(message.content)) {
-        const answer = message.content
-          .filter(
-            (part): part is { type: "text"; text: string } =>
-              typeof part === "object" &&
-              part !== null &&
-              "type" in part &&
-              part.type === "text" &&
-              "text" in part &&
-              typeof part.text === "string",
-          )
-          .map((part) => part.text)
-          .join("\n")
-          .trim();
+        const answer = stripThinkMarkers(
+          message.content
+            .filter(
+              (part): part is { type: "text"; text: string } =>
+                typeof part === "object" &&
+                part !== null &&
+                "type" in part &&
+                part.type === "text" &&
+                "text" in part &&
+                typeof part.text === "string",
+            )
+            .map((part) => part.text)
+            .join("\n"),
+        ).trim();
         if (answer) return answer;
       }
     }

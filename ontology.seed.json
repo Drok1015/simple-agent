@@ -115,7 +115,7 @@
       "label": "资产",
       "aliases": ["收货资产", "设备资产"],
       "parent_id": "ham-business",
-      "description": "合同收货后登记的资产实例（receiving-info）。按合同查询工具 query_assets_by_contract，需在 filters 中传合同标识。",
+      "description": "合同收货后登记的资产实例（receiving-info）。按合同查询工具 query_assets_by_contract，filters 必须同时传 purchaseContractNumber（合同号）和 orgCode（公司编码）。",
       "tool": "query_assets_by_contract"
     },
     {
