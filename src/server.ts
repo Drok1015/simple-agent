@@ -48,6 +48,8 @@ app.get("/api/health", async () => ({
   status: "ok",
   model: runtime.modelName,
   mcp_tools: runtime.toolNames,
+  ham_api_base: settings.hamApiBase,
+  ham_token_configured: settings.hamToken.trim().length > 0,
 }));
 
 // 本体可视化数据：每次请求都读盘，能看到 MCP 子进程在会话中写入的最新本体。

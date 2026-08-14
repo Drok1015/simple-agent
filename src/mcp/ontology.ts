@@ -5,8 +5,9 @@ import { z } from "zod";
 /**
  * 本体（Ontology）学习模块的核心存储。
  *
- * - TBox（概念层）：concepts 里的分类树，描述"世界由哪些概念构成、概念之间如何关联"。
- * - ABox（实例层）：instances 里的具体资产，把概念锚定到业务订单上。
+ * - TBox（概念层）：concepts 里的分类树，描述"世界由哪些概念构成、概念之间如何关联"，
+ *   可选 tool/params 属性把概念映射到真实业务查询工具（语义 → 接口的桥）。
+ * - ABox（实例层）：instances 预留给静态锚定；当前业务数据全部来自真实接口，按需返回。
  *
  * 每次操作都是 读文件 → 计算 → 原子写回，不做长驻内存状态，
  * 这样 MCP 子进程的写入和 Web API 的读取天然共享同一份最新数据。
@@ -18,6 +19,10 @@ const conceptSchema = z.object({
   aliases: z.array(z.string().trim().min(1).max(50)).optional(),
   parent_id: z.string().min(1).nullable(),
   description: z.string().trim().max(500),
+  /** 工具映射提示：该概念（或其子概念）对应的业务查询 MCP Tool 名称。 */
+  tool: z.string().trim().min(1).max(64).optional(),
+  /** 调用提示参数：search_ontology 会把最近的 tool/params 作为 suggested_call 返回。 */
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 
 const instanceSchema = z.object({
@@ -50,6 +55,8 @@ export interface ConceptSummary {
   path: ConceptPathNode[];
   children: { id: string; label: string }[];
   instances: { id: string; label: string; order_id: string }[];
+  /** 语义 → 接口的桥梁：沿"自身 → 祖先"找到的第一个工具映射。 */
+  suggested_call: { tool: string; params: Record<string, unknown> } | null;
 }
 
 function newId() {
@@ -60,6 +67,8 @@ export class OntologyStore {
   constructor(
     private readonly runtimePath: string,
     private readonly seedPath: string,
+    /** 允许在 tool 提示中引用的业务查询工具白名单（本体治理）。 */
+    private readonly knownTools: ReadonlySet<string> = new Set(),
   ) {}
 
   private async ensureInitialized(): Promise<OntologyData> {
@@ -163,6 +172,24 @@ export class OntologyStore {
     );
   }
 
+  /** 沿"自身 → 祖先链"找到的第一个工具映射，构成概念到真实接口的桥。 */
+  private resolveToolHint(
+    data: OntologyData,
+    concept: OntologyConcept,
+  ): { tool: string; params: Record<string, unknown> } | null {
+    const byId = this.conceptById(data);
+    let cursor: OntologyConcept | undefined = concept;
+    const visited = new Set<string>();
+    while (cursor && !visited.has(cursor.id)) {
+      visited.add(cursor.id);
+      if (cursor.tool) {
+        return { tool: cursor.tool, params: (cursor.params ?? {}) as Record<string, unknown> };
+      }
+      cursor = cursor.parent_id === null ? undefined : byId.get(cursor.parent_id);
+    }
+    return null;
+  }
+
   summarize(data: OntologyData, concept: OntologyConcept): ConceptSummary {
     const instances = data.instances
       .filter((instance) => instance.concept_id === concept.id)
@@ -177,6 +204,7 @@ export class OntologyStore {
         .filter((item) => item.parent_id === concept.id)
         .map(({ id, label }) => ({ id, label })),
       instances,
+      suggested_call: this.resolveToolHint(data, concept),
     };
   }
 
@@ -206,7 +234,8 @@ export class OntologyStore {
     parent: string;
     description?: string | undefined;
     aliases?: string[] | undefined;
-    order_id?: string | undefined;
+    tool?: string | undefined;
+    params?: Record<string, unknown> | undefined;
   }): Promise<
     | { created: true; concept: ConceptSummary; persisted_to: string }
     | { created: false; reason: string }
@@ -239,6 +268,14 @@ export class OntologyStore {
       };
     }
 
+    // 本体治理：tool 必须是已注册的业务查询工具，防止概念指向不存在的接口。
+    if (input.tool && !this.knownTools.has(input.tool.trim())) {
+      return {
+        created: false,
+        reason: `未知的工具名：${input.tool.trim()}。可用工具：${[...this.knownTools].join("、")}`,
+      };
+    }
+
     const aliases = [...new Set((input.aliases ?? []).map((alias) => alias.trim()).filter(Boolean))];
     const concept: OntologyConcept = {
       id: newId(),
@@ -246,75 +283,15 @@ export class OntologyStore {
       ...(aliases.length ? { aliases } : {}),
       parent_id: parent.id,
       description: input.description?.trim() || `${parent.label} 下的概念，由会话中建设产生。`,
+      ...(input.tool?.trim() ? { tool: input.tool.trim() } : {}),
+      ...(input.params && Object.keys(input.params).length ? { params: input.params } : {}),
     };
-    const next: OntologyData = {
-      ...data,
-      concepts: [...data.concepts, concept],
-      // 可选：把新概念直接挂到某个订单，形成"概念建设 → 业务数据可达"的闭环。
-      instances: input.order_id?.trim()
-        ? [
-            ...data.instances,
-            {
-              id: `asset-${Date.now().toString(36)}`,
-              label,
-              concept_id: concept.id,
-              order_id: input.order_id.trim(),
-            },
-          ]
-        : data.instances,
-    };
+    const next: OntologyData = { ...data, concepts: [...data.concepts, concept] };
     await this.write(next);
     return {
       created: true,
       concept: this.summarize(next, concept),
       persisted_to: this.runtimePath.split("/").pop() ?? "ontology.json",
-    };
-  }
-
-  /** 语义查询：把概念闭包内的全部实例按订单聚合，供与 query_orders 对照。 */
-  async queryByConcept(term: string): Promise<{
-    found: boolean;
-    concept?: ConceptSummary;
-    matched_concepts: string[];
-    assets: { label: string; concept: string; order_id: string }[];
-    order_ids: string[];
-    expansion: string[];
-  }> {
-    const data = await this.ensureInitialized();
-    const concept = this.findConcept(data, term);
-    if (!concept) {
-      return {
-        found: false,
-        matched_concepts: [],
-        assets: [],
-        order_ids: [],
-        expansion: data.concepts.map((item) => item.label),
-      };
-    }
-
-    const closure = this.descendantsClosure(data, concept.id);
-    const labelOf = this.conceptById(data);
-    const assets = data.instances
-      .filter((instance) => closure.has(instance.concept_id))
-      .map((instance) => ({
-        label: instance.label,
-        concept: labelOf.get(instance.concept_id)?.label ?? instance.concept_id,
-        order_id: instance.order_id,
-      }));
-    const matchedConcepts = data.concepts
-      .filter((item) => closure.has(item.id))
-      .filter((item) => data.instances.some((instance) => instance.concept_id === item.id))
-      .map((item) => item.label);
-
-    return {
-      found: true,
-      concept: this.summarize(data, concept),
-      matched_concepts: matchedConcepts,
-      assets,
-      order_ids: [...new Set(assets.map((asset) => asset.order_id))].sort(),
-      expansion: data.concepts
-        .filter((item) => closure.has(item.id))
-        .map((item) => item.label),
     };
   }
 }

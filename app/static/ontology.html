@@ -270,8 +270,9 @@
           <div class="detail" id="detail"><div class="detail-empty">从左侧选择一个概念</div></div>
           <div class="note" id="note" style="border-top: 0; border-left: 0; border-right: 0; border-bottom: 0;">
             <b>试一试：</b>回到 <a href="/" style="color:#216fc7">聊天页</a> 对 Agent 说
-            「帮我在本体里新增概念：冷干机，父类是后处理设备，并关联订单 SO-1001」，
-            然后回来观察树的变化；再问 Agent「查一下后处理设备相关的订单」，对比新增前后的结果。
+            「帮我在本体里新增概念：设备类采购，父类是采购申请，映射到 query_purchase_requisitions 工具」，
+            然后回来观察树的变化（新概念会带"会话新增"标记）；再问 Agent「查一下草稿状态的采购申请单」，
+            感受本体 suggested_call 如何把业务术语路由到真实接口。
           </div>
         </section>
       </div>
@@ -447,7 +448,7 @@
         if (!instances.length) {
           const empty = document.createElement("span");
           empty.className = "chip none";
-          empty.textContent = "暂无实例，可在会话中建设时关联订单";
+          empty.textContent = "业务数据由真实接口按需返回，不在本体中静态维护";
           assetList.appendChild(empty);
         }
         instances.forEach((instance) => {

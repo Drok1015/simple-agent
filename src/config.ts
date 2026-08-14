@@ -18,6 +18,9 @@ const envSchema = z.object({
   MODEL_THINKING: z.enum(["enabled", "disabled"]).default("disabled"),
   APP_HOST: z.string().default("127.0.0.1"),
   APP_PORT: z.coerce.number().int().positive().default(8000),
+  HAM_API_BASE: z.url("HAM_API_BASE 必须是合法的 URL").default("https://ham-test.haier.net"),
+  HAM_TOKEN: z.string().default(""),
+  HAM_TENANT_ID: z.string().default(""),
 });
 
 const parsed = envSchema.parse(process.env);
@@ -31,4 +34,7 @@ export const settings = {
   modelThinking: parsed.MODEL_THINKING,
   appHost: parsed.APP_HOST,
   appPort: parsed.APP_PORT,
+  hamApiBase: parsed.HAM_API_BASE,
+  hamToken: parsed.HAM_TOKEN,
+  hamTenantId: parsed.HAM_TENANT_ID,
 } as const;

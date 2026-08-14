@@ -610,15 +610,15 @@
 
         <div class="nav-label">可用能力</div>
         <div class="nav-item">
-          <span class="nav-icon">⌕</span>
-          <span class="nav-copy"><span class="nav-title">订单查询</span></span>
+          <span class="nav-icon">◈</span>
+          <span class="nav-copy"><span class="nav-title">资产项目查询</span></span>
         </div>
         <div class="nav-item">
           <span class="nav-icon">▤</span>
-          <span class="nav-copy"><span class="nav-title">资产申报草稿</span></span>
+          <span class="nav-copy"><span class="nav-title">采购单 / 合同查询</span></span>
         </div>
         <a class="nav-item" href="/ontology" style="text-decoration: none;">
-          <span class="nav-icon">◈</span>
+          <span class="nav-icon">◇</span>
           <span class="nav-copy"><span class="nav-title">本体浏览器</span><span class="nav-subtitle">查看分类树与会话建设</span></span>
         </a>
 
@@ -666,7 +666,7 @@
                 <span class="context-chip">业务系统</span>
                 <span>MCP 工具已连接</span>
               </div>
-              <textarea id="input" placeholder="询问订单，或让助手准备资产申报草稿…" rows="1"></textarea>
+              <textarea id="input" placeholder="查项目、查采购单，或问一个业务术语…（真实接口，只读）" rows="1"></textarea>
               <div class="composer-footer">
                 <span class="composer-hint">Enter 发送 · Shift + Enter 换行</span>
                 <button id="send" class="send" type="submit" aria-label="发送">
@@ -710,21 +710,17 @@
       }
 
       const toolCatalog = {
-        query_orders: { label: "查询业务订单", description: "在业务系统中匹配订单信息" },
-        get_asset_form: { label: "读取资产申报表单", description: "获取字段规则和订单建议值" },
-        prepare_asset_draft: { label: "准备资产申报草稿", description: "校验字段并生成未提交草稿" },
-        search_ontology: { label: "查询本体概念", description: "读取概念定义、分类链与实例" },
-        query_orders_by_concept: { label: "按概念语义查询订单", description: "把概念展开为子类后聚合订单" },
+        query_parent_projects: { label: "查询父项目", description: "调用资产中台真实接口查询父项目" },
+        query_child_projects: { label: "查询子项目", description: "调用资产中台真实接口查询子项目" },
+        query_purchase_requisitions: { label: "查询采购申请单", description: "调用资产中台真实接口查询采购申请" },
+        query_purchase_contracts: { label: "查询采购合同", description: "调用资产中台真实接口查询采购合同" },
+        query_assets_by_contract: { label: "查询合同资产", description: "按合同查询收货资产" },
+        search_ontology: { label: "查询本体概念", description: "读取概念定义、分类链与工具映射" },
         add_ontology_concept: { label: "建设本体概念", description: "新增概念并挂到分类树下" },
-        get_ontology: { label: "读取本体全图", description: "浏览全部概念与实例" },
+        get_ontology: { label: "读取本体全图", description: "浏览资产项目/采购分类体系" },
       };
 
-      const fieldLabels = {
-        asset_name: "资产名称",
-        asset_category: "资产分类",
-        amount: "资产金额",
-        project_name: "项目名称",
-      };
+      const fieldLabels = {};
 
       function updateThreadLabel() {
         document.querySelector("#thread-label").textContent = `会话 ${threadId.slice(0, 8)}`;
@@ -734,23 +730,20 @@
         conversation.innerHTML = `
           <div class="welcome" id="welcome">
             <div class="welcome-mark">✦</div>
-            <h2>今天想处理什么业务？</h2>
-            <p>我可以调用已授权的业务工具查询订单、读取资产申报字段，并准备一份可检查的草稿。正式提交仍由你决定。</p>
+            <h2>今天想查什么业务？</h2>
+            <p>我接入了资产中台的真实接口，可以查询父项目、子项目、采购申请单、采购合同和合同资产。所有数据来自真实系统，只读不改。</p>
             <div class="starter-grid">
-              <button class="starter" type="button" data-prompt="查询订单 SO-1001">
-                <span class="starter-icon">⌕</span><strong>查询指定订单</strong><span>查看客户、项目、状态和金额</span>
+              <button class="starter" type="button" data-prompt="查一下生效状态的父项目">
+                <span class="starter-icon">◈</span><strong>查生效的父项目</strong><span>真实接口 · 状态语义自动转码</span>
               </button>
-              <button class="starter" type="button" data-prompt="查一下青岛工厂的订单">
-                <span class="starter-icon">◎</span><strong>按客户查询</strong><span>从业务系统筛选相关订单</span>
+              <button class="starter" type="button" data-prompt="查一下审批中的采购申请单">
+                <span class="starter-icon">▤</span><strong>查审批中的采购单</strong><span>采购申请 · 供应商与金额</span>
               </button>
-              <button class="starter" type="button" data-prompt="根据 SO-1001 准备资产申报草稿，资产名称改为空压机 A">
-                <span class="starter-icon">▤</span><strong>准备申报草稿</strong><span>生成字段预览，不会正式提交</span>
+              <button class="starter" type="button" data-prompt="PR 是什么意思？查采购申请该用哪个工具？">
+                <span class="starter-icon">◎</span><strong>本体概念查询</strong><span>术语归一 · 分类链 · 工具映射</span>
               </button>
-              <button class="starter" type="button" data-prompt="空压机属于哪类资产？顺便帮我查一下动力设备相关的订单">
-                <span class="starter-icon">◈</span><strong>本体语义查询</strong><span>概念分类链 + 按类别查订单</span>
-              </button>
-              <button class="starter" type="button" data-prompt="帮我在本体里新增概念：冷干机，父类是后处理设备，并关联订单 SO-1001">
-                <span class="starter-icon">＋</span><strong>会话中建设本体</strong><span>新增概念后立即影响查询</span>
+              <button class="starter" type="button" data-prompt="帮我在本体里新增概念：设备类采购，父类是采购申请，映射到 query_purchase_requisitions 工具">
+                <span class="starter-icon">＋</span><strong>会话中建设本体</strong><span>新增概念后立即影响工具选择</span>
               </button>
             </div>
           </div>`;
@@ -782,83 +775,123 @@
         return JSON.stringify(value);
       }
 
-      function renderOrderResult(container, output) {
-        if (!output || !Array.isArray(output.items)) return false;
+      /** 业务记录卡片配置：每个真实接口工具的标题字段、状态字段与展示字段。 */
+      const recordViews = {
+        query_parent_projects: {
+          title: (row) => row.project_name || row.project_code || "未命名项目",
+          id: (row) => row.project_code,
+          meta: [
+            ["状态", (row) => row.status ?? "—"],
+            ["公司", (row) => row.org_code ?? "—"],
+            ["预算", (row) => typeof row.budget_amount === "number" ? `¥${formatValue(row.budget_amount)}` : "—"],
+            ["项目经理", (row) => row.manager ?? "—"],
+          ],
+        },
+        query_child_projects: {
+          title: (row) => row.project_name || row.project_code || "未命名子项目",
+          id: (row) => row.project_code,
+          meta: [
+            ["状态", (row) => row.status ?? "—"],
+            ["公司", (row) => row.org_code ?? "—"],
+            ["预算", (row) => typeof row.budget_amount === "number" ? `¥${formatValue(row.budget_amount)}` : "—"],
+            ["项目经理", (row) => row.manager ?? "—"],
+          ],
+        },
+        query_purchase_requisitions: {
+          title: (row) => row.requisition_name || row.requisition_code || "未命名采购单",
+          id: (row) => row.requisition_code,
+          meta: [
+            ["状态", (row) => row.status ?? "—"],
+            ["项目", (row) => row.project_name ?? row.project_code ?? "—"],
+            ["供应商", (row) => row.supplier ?? "—"],
+            ["金额", (row) => typeof row.amount === "number" ? `${row.currency ?? "¥"}${formatValue(row.amount)}` : "—"],
+            ["申请人", (row) => row.applicant ?? "—"],
+          ],
+        },
+      };
+
+      function renderRecordList(container, toolName, output) {
+        const view = recordViews[toolName];
+        if (!view || !output || typeof output !== "object" || !Array.isArray(output.records)) {
+          return false;
+        }
         const grid = document.createElement("div");
         grid.className = "order-grid";
 
-        if (output.items.length === 0) {
-          grid.textContent = "没有找到匹配的订单";
+        if (output.records.length === 0) {
+          grid.textContent = "接口没有返回匹配的数据";
         }
 
-        output.items.forEach((order) => {
+        output.records.forEach((row) => {
           const card = document.createElement("div");
           card.className = "order-card";
-          card.innerHTML = `
-            <div class="order-card-head">
-              <span class="order-id"></span><span class="tag"></span>
-            </div>
-            <div class="order-meta">
-              <div class="meta-item"><span>客户</span><strong data-field="customer"></strong></div>
-              <div class="meta-item"><span>项目</span><strong data-field="project"></strong></div>
-              <div class="meta-item"><span>金额</span><strong data-field="amount"></strong></div>
-            </div>`;
-          card.querySelector(".order-id").textContent = order.order_id || "未知订单";
-          card.querySelector(".tag").textContent = order.status || "状态未知";
-          card.querySelector('[data-field="customer"]').textContent = order.customer_name || "—";
-          card.querySelector('[data-field="project"]').textContent = order.project_name || "—";
-          card.querySelector('[data-field="amount"]').textContent =
-            typeof order.amount === "number" ? `¥${formatValue(order.amount)}` : "—";
+          const head = document.createElement("div");
+          head.className = "order-card-head";
+          const title = document.createElement("span");
+          title.className = "order-id";
+          title.textContent = `${view.title(row)}`;
+          const statusTag = document.createElement("span");
+          statusTag.className = "tag";
+          statusTag.textContent = String(view.meta[0]?.[1](row) ?? "");
+          head.append(title, statusTag);
+
+          const meta = document.createElement("div");
+          meta.className = "order-meta";
+          view.meta.slice(1).forEach(([label, read]) => {
+            const item = document.createElement("div");
+            item.className = "meta-item";
+            const labelSpan = document.createElement("span");
+            labelSpan.textContent = label;
+            const value = document.createElement("strong");
+            value.textContent = String(read(row));
+            item.append(labelSpan, value);
+            meta.appendChild(item);
+          });
+
+          const idLine = document.createElement("div");
+          idLine.className = "concept-path";
+          idLine.textContent = `编码 ${view.id(row) ?? "—"}`;
+
+          card.append(head, meta, idLine);
           grid.appendChild(card);
         });
 
+        if (typeof output.total === "number" && output.total > output.records.length) {
+          const more = document.createElement("div");
+          more.className = "concept-path";
+          more.textContent = `共 ${output.total} 条，当前显示前 ${output.records.length} 条，可让我翻页继续查`;
+          grid.appendChild(more);
+        }
         container.appendChild(grid);
         return true;
       }
 
-      function renderDraftResult(container, output) {
-        if (!output || typeof output !== "object" || !output.draft) return false;
-        const card = document.createElement("div");
-        card.className = "draft-card";
-        const head = document.createElement("div");
-        head.className = "draft-head";
-        const title = document.createElement("strong");
-        title.textContent = `资产申报草稿 · ${output.order_id || ""}`;
-        const state = document.createElement("span");
-        state.className = "tag";
-        state.textContent = output.valid ? "校验通过" : "需要修改";
-        head.append(title, state);
-
-        const fields = document.createElement("div");
-        fields.className = "draft-fields";
-        Object.entries(output.draft).forEach(([key, value]) => {
-          const field = document.createElement("div");
-          field.className = "draft-field";
-          const label = document.createElement("span");
-          label.textContent = fieldLabels[key] || key;
-          const fieldValue = document.createElement("strong");
-          fieldValue.textContent = key === "amount" && typeof value === "number"
-            ? `¥${formatValue(value)}`
-            : formatValue(value);
-          field.append(label, fieldValue);
-          fields.appendChild(field);
+      /** 合同/资产等未做专门卡片的记录：以关键值对形式列出。 */
+      function renderGenericRecords(container, output) {
+        if (!output || typeof output !== "object" || !Array.isArray(output.records)) return false;
+        const grid = document.createElement("div");
+        grid.className = "order-grid";
+        if (output.records.length === 0) grid.textContent = "接口没有返回匹配的数据";
+        output.records.forEach((row) => {
+          const card = document.createElement("div");
+          card.className = "order-card";
+          const entries = Object.entries(row ?? {}).filter(
+            ([key, value]) => typeof value !== "object" && value !== null && value !== "",
+          );
+          entries.slice(0, 6).forEach(([key, value]) => {
+            const line = document.createElement("div");
+            line.className = "meta-item";
+            const label = document.createElement("span");
+            label.textContent = key;
+            const strong = document.createElement("strong");
+            strong.textContent = formatValue(value);
+            line.append(label, strong);
+            card.appendChild(line);
+          });
+          grid.appendChild(card);
         });
-
-        const warning = document.createElement("div");
-        warning.className = "draft-warning";
-        warning.textContent = "◷ 当前仅为草稿，尚未写入业务系统";
-        card.append(head, fields, warning);
-        container.appendChild(card);
+        container.appendChild(grid);
         return true;
-      }
-
-      function renderFormResult(container, output) {
-        if (!output || typeof output !== "object" || !output.suggested_values) return false;
-        return renderDraftResult(container, {
-          valid: true,
-          order_id: output.order?.order_id,
-          draft: output.suggested_values,
-        });
       }
 
       function conceptCard(concept) {
@@ -917,6 +950,17 @@
           });
           card.append(list);
         }
+
+        const call = concept.suggested_call;
+        if (call && call.tool) {
+          const callRow = document.createElement("div");
+          callRow.className = "concept-children";
+          callRow.textContent =
+            Object.keys(call.params ?? {}).length > 0
+              ? `工具映射：${call.tool} · ${JSON.stringify(call.params)}`
+              : `工具映射：${call.tool}`;
+          card.append(callRow);
+        }
         return card;
       }
 
@@ -932,45 +976,6 @@
           ? `本体中没有找到该概念。可用概念：${output.suggestions.join("、")}`
           : "本体中没有找到该概念。";
         container.appendChild(miss);
-        return true;
-      }
-
-      function renderSemanticQuery(container, output) {
-        if (!output || typeof output !== "object" || !output.found) return false;
-        const summary = document.createElement("div");
-        summary.className = "concept-card";
-        container.appendChild(summary);
-
-        const concept = output.concept;
-        const pathLine = document.createElement("div");
-        pathLine.className = "concept-path";
-        pathLine.textContent = `语义扩展：${(output.expansion ?? []).join("、")}`;
-        const metaLine = document.createElement("div");
-        metaLine.className = "concept-desc";
-        metaLine.textContent = `按「${concept?.label ?? ""}」命中 ${output.assets?.length ?? 0} 个实例、${output.order_ids?.length ?? 0} 个订单`;
-        summary.append(pathLine, metaLine);
-
-        const assets = output.assets ?? [];
-        if (assets.length) {
-          const list = document.createElement("div");
-          list.className = "asset-list";
-          assets.forEach((asset) => {
-            const row = document.createElement("div");
-            row.className = "asset";
-            const name = document.createElement("strong");
-            name.textContent = `${asset.label}（${asset.concept}）`;
-            const tag = document.createElement("span");
-            tag.className = "tag";
-            tag.textContent = asset.order_id;
-            row.append(name, tag);
-            list.appendChild(row);
-          });
-          container.appendChild(list);
-        }
-
-        if (output.orders && Array.isArray(output.orders.items)) {
-          renderOrderResult(container, output.orders);
-        }
         return true;
       }
 
@@ -998,11 +1003,10 @@
       function renderToolOutput(container, name, output) {
         container.innerHTML = "";
         const rendered =
-          (name === "query_orders" && renderOrderResult(container, output)) ||
-          (name === "prepare_asset_draft" && renderDraftResult(container, output)) ||
-          (name === "get_asset_form" && renderFormResult(container, output)) ||
+          (recordViews[name] && renderRecordList(container, name, output)) ||
+          (["query_purchase_contracts", "query_assets_by_contract"].includes(name) &&
+            renderGenericRecords(container, output)) ||
           (name === "search_ontology" && renderOntologySearch(container, output)) ||
-          (name === "query_orders_by_concept" && renderSemanticQuery(container, output)) ||
           (name === "add_ontology_concept" && renderAddConcept(container, output));
         if (rendered) return;
 

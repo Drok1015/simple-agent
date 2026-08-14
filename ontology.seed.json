@@ -1,96 +1,143 @@
 {
-  "version": 1,
+  "version": 2,
   "concepts": [
     {
-      "id": "equipment",
-      "label": "设备",
+      "id": "ham-business",
+      "label": "资产业务对象",
       "parent_id": null,
-      "description": "企业资产申报中所有设备类资产的根概念。"
+      "description": "资产中台（ham_ui）业务对象总览。实例不再静态维护，全部业务数据通过真实接口按需返回。"
     },
     {
-      "id": "power-equipment",
-      "label": "动力设备",
-      "parent_id": "equipment",
-      "description": "为生产提供动力源的设备，例如压缩空气、电力驱动设备。"
+      "id": "project",
+      "label": "资产项目",
+      "aliases": ["项目", "投资项目"],
+      "parent_id": "ham-business",
+      "description": "资产投资的载体，分父项目/子项目两级。核心字段：项目编码、项目名称、项目状态、公司编码 orgCode、项目预算 projectTotalAmount、项目经理、计划起止日期。按状态查用 query_parent_projects / query_child_projects。",
+      "tool": "query_parent_projects"
     },
     {
-      "id": "air-compressor",
-      "label": "空压机",
-      "aliases": ["空气压缩机"],
-      "parent_id": "power-equipment",
-      "description": "将机械能转化为气体压力能的设备，常见于工厂气源站。"
+      "id": "parent-project",
+      "label": "父项目",
+      "aliases": ["主项目"],
+      "parent_id": "project",
+      "description": "项目主体，编码前缀对应 parentProjectCode。查询工具 query_parent_projects，常用过滤字段：parentProjectCode、parentProjectName、orgCode、hbcParentProjectCode、projectManager；父项目查子项目用 query_child_projects 传 parent_project_code。",
+      "tool": "query_parent_projects",
+      "params": { "filters": { "parentProjectName": "" } }
     },
     {
-      "id": "electric-motor",
-      "label": "电动机",
-      "aliases": ["电机"],
-      "parent_id": "power-equipment",
-      "description": "将电能转化为机械能的驱动设备。"
+      "id": "child-project",
+      "label": "子项目",
+      "aliases": ["明细项目"],
+      "parent_id": "project",
+      "description": "父项目下的执行单元，字段同项目（projectCode/projectName/projectStatus/projectTotalAmount），canStart=Y 时可发起采购申请。查询工具 query_child_projects。",
+      "tool": "query_child_projects"
     },
     {
-      "id": "hvac",
-      "label": "暖通设备",
-      "aliases": ["HVAC"],
-      "parent_id": "equipment",
-      "description": "供暖、通风与空气调节相关设备。"
+      "id": "project-status",
+      "label": "项目状态",
+      "parent_id": "project",
+      "description": "父/子项目共用状态枚举：2=项目可审批、3=项目审批中、4=项目退回、8=项目取消、9=项目生效。查询时把状态词传给 query_parent_projects 的 status 参数即可自动转码。"
     },
     {
-      "id": "chiller",
-      "label": "冷水机组",
-      "aliases": ["冷冻机"],
-      "parent_id": "hvac",
-      "description": "为空调系统提供冷冻水的集中冷源设备。"
+      "id": "project-approved",
+      "label": "项目生效",
+      "aliases": ["已生效项目", "生效"],
+      "parent_id": "project-status",
+      "description": "parentProjectStatus=9，项目审批完成，可继续发起采购。查询：query_parent_projects status=生效。",
+      "tool": "query_parent_projects",
+      "params": { "status": "生效" }
     },
     {
-      "id": "ahu",
-      "label": "空调末端",
-      "parent_id": "hvac",
-      "description": "布置在各个区域、直接处理空气的末端设备，例如空调箱、风机盘管。"
+      "id": "project-approving",
+      "label": "项目审批中",
+      "aliases": ["审批中"],
+      "parent_id": "project-status",
+      "description": "parentProjectStatus=3，流程在途。查询：query_parent_projects status=审批中。",
+      "tool": "query_parent_projects",
+      "params": { "status": "审批中" }
     },
     {
-      "id": "post-processing",
-      "label": "后处理设备",
-      "aliases": ["压缩空气后处理"],
-      "parent_id": "equipment",
-      "description": "对压缩空气进行净化、干燥、储存等二次处理的设备。"
+      "id": "project-returned",
+      "label": "项目退回",
+      "aliases": ["退回"],
+      "parent_id": "project-status",
+      "description": "parentProjectStatus=4，需要修改后重新提交。查询：query_parent_projects status=退回。",
+      "tool": "query_parent_projects",
+      "params": { "status": "退回" }
     },
     {
-      "id": "air-tank",
-      "label": "储气罐",
-      "parent_id": "post-processing",
-      "description": "储存压缩空气、稳定管路压力的压力容器。"
+      "id": "procurement",
+      "label": "采购",
+      "aliases": ["采购管理", "procurement"],
+      "parent_id": "ham-business",
+      "description": "从项目预算到合同支付的采购全链路对象：采购申请 → 采购合同 → 支付节点；合同收货后形成资产。"
+    },
+    {
+      "id": "purchase-requisition",
+      "label": "采购申请",
+      "aliases": ["采购申请单", "采购单", "PR"],
+      "parent_id": "procurement",
+      "description": "从子项目发起的采购请求。核心字段：采购编码 requisitionCode、采购单名称 requisitionName、状态 requisitionStatus、项目编码 projectCode、供应商 supplierCode/supplierName、采购金额 requisitionAmount、申请人 applicantName。查询工具 query_purchase_requisitions。",
+      "tool": "query_purchase_requisitions"
+    },
+    {
+      "id": "requisition-status",
+      "label": "采购申请状态",
+      "parent_id": "purchase-requisition",
+      "description": "字母码枚举：D=草稿、P=审批中、A=已审批、R=已退回、C=已取消（以系统字典为准）。查询时把状态词传给 query_purchase_requisitions 的 status 参数。"
+    },
+    {
+      "id": "requisition-draft",
+      "label": "采购申请草稿",
+      "aliases": ["草稿"],
+      "parent_id": "requisition-status",
+      "description": "requisitionStatus=D，尚未提交流程。查询：query_purchase_requisitions status=草稿。",
+      "tool": "query_purchase_requisitions",
+      "params": { "status": "草稿" }
+    },
+    {
+      "id": "purchase-contract",
+      "label": "采购合同",
+      "aliases": ["合同"],
+      "parent_id": "procurement",
+      "description": "由采购申请单生成的合同，含合同明细与支付节点。查询工具 query_purchase_contracts（过滤字段透传，如 contractCode、projectCode）。",
+      "tool": "query_purchase_contracts"
+    },
+    {
+      "id": "pay-node",
+      "label": "支付节点",
+      "aliases": ["付款节点"],
+      "parent_id": "procurement",
+      "description": "采购合同的分期付款计划（purchase-contract-pay-node）。当前 Agent 未开放独立查询工具，需要时经合同详情在 ham_ui 中查看。"
+    },
+    {
+      "id": "asset",
+      "label": "资产",
+      "aliases": ["收货资产", "设备资产"],
+      "parent_id": "ham-business",
+      "description": "合同收货后登记的资产实例（receiving-info）。按合同查询工具 query_assets_by_contract，需在 filters 中传合同标识。",
+      "tool": "query_assets_by_contract"
+    },
+    {
+      "id": "basedata",
+      "label": "基础数据",
+      "parent_id": "ham-business",
+      "description": "采购与项目共用的字典数据：供应商（base-dict-info type=4）、物料三级分类（project-subject 目录）、计量单位。当前不开放独立查询工具。"
+    },
+    {
+      "id": "supplier",
+      "label": "供应商",
+      "aliases": ["supplier"],
+      "parent_id": "basedata",
+      "description": "供应商字典，编码 supplierCode。可在 query_purchase_requisitions 的 filters 中按 supplierCode 过滤采购单。"
+    },
+    {
+      "id": "material",
+      "label": "物料",
+      "aliases": ["物料分类", "material"],
+      "parent_id": "basedata",
+      "description": "采购申请明细行的物料三级分类（firstCategory/secondCategory/thirdCategory）。明细字段：materialCode、materialDescription、standardModel、materialNumber、materialUom、materialAmount。"
     }
   ],
-  "instances": [
-    {
-      "id": "asset-001",
-      "label": "螺杆空压机 A",
-      "concept_id": "air-compressor",
-      "order_id": "SO-1001"
-    },
-    {
-      "id": "asset-002",
-      "label": "离心空压机 B",
-      "concept_id": "air-compressor",
-      "order_id": "SO-1001"
-    },
-    {
-      "id": "asset-003",
-      "label": "冷水机组 1 号",
-      "concept_id": "chiller",
-      "order_id": "SO-1002"
-    },
-    {
-      "id": "asset-004",
-      "label": "空调箱 2 号",
-      "concept_id": "ahu",
-      "order_id": "SO-1002"
-    },
-    {
-      "id": "asset-005",
-      "label": "储气罐 C",
-      "concept_id": "air-tank",
-      "order_id": "SO-1001"
-    }
-  ]
+  "instances": []
 }
