@@ -59,7 +59,7 @@ npm run dev
 
 - `query_parent_projects`：父项目分页；status 传中文状态词（生效/审批中/退回/取消/可审批）自动转码
 - `query_child_projects`：子项目分页；传 parent_project_code 时走"父查子"接口
-- `query_purchase_requisitions`：采购申请单分页；status 传中文状态词自动转字母码（草稿=D 等）
+- `query_purchase_requisitions`：采购申请单分页；status 传中文状态词自动转字母码（草稿=D、审批中=P、招标中=B、已批准=A 等）
 - `query_purchase_contracts`：采购合同分页
 - `query_assets_by_contract`：按合同查收货资产
 

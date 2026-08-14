@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "concepts": [
     {
       "id": "ham-business",
@@ -20,7 +20,7 @@
       "label": "父项目",
       "aliases": ["主项目", "立项项目"],
       "parent_id": "project-domain",
-      "description": "项目立项主体。核心字段：parentProjectCode、parentProjectName、parentProjectStatus(2可审批/3审批中/4退回/8取消/9生效)、orgCode、projectTotalAmount、项目经理、hbcParentProjectCode(HBC关联)。查询工具 query_parent_projects。",
+      "description": "项目立项主体。核心字段：parentProjectCode、parentProjectName、parentProjectStatus(2可审批/3审批中/4退回/8取消/9生效)、orgCode、projectTotalAmount、项目经理、hbcParentProjectCode(HBC关联)。蓝图内控：立项审批通过后通知 HBC 锁定预算；项目取消时通知 HBC 释放预算。查询工具 query_parent_projects。",
       "tool": "query_parent_projects",
       "relations": [
         { "target": "child-project", "type": "包含", "label": "父项目包含多个子项目", "via": "parentProjectCode" },
@@ -66,12 +66,14 @@
       "label": "采购申请单",
       "aliases": ["采购申请", "采购单", "PR", "请购单"],
       "parent_id": "procurement-domain",
-      "description": "从子项目发起的采购请求。核心字段：requisitionCode、requisitionName、requisitionStatus(D草稿/P审批中/A已审批/R已退回/C已取消)、projectCode、supplierCode/supplierName、requisitionAmount、明细行(物料)。查询工具 query_purchase_requisitions。",
+      "description": "从子项目发起的采购请求，分自采（中台走审批流，合同生效前可取消）与招采（同步招采系统定标，不在中台审批、不可取消）两类。蓝图内控：申请金额不能超过项目剩余预算；提交后调用 HBC 接口锁占预算（INT_SZ_01），招采定标后按定标金额重新锁占（INT_SZ_02）。核心字段：requisitionCode、requisitionName、requisitionStatus(D草稿/U已提交/P审批中/B招标中/F招标失败/C已取消/A已批准/R已退回/S已生成合同)、projectCode、supplierCode/supplierName、requisitionAmount、明细行(物料)。查询工具 query_purchase_requisitions。",
       "tool": "query_purchase_requisitions",
       "relations": [
         { "target": "purchase-contract", "type": "生成", "label": "审批通过的采购申请生成采购合同", "via": "requisitionCode" },
         { "target": "requisition-detail", "type": "包含", "label": "申请单包含多条物料明细行", "via": "purchaseRequisitionDetailVOList" },
-        { "target": "process-instance", "type": "审批", "label": "采购申请提交审批（updateRequisitionAudit）", "via": "processInstanceId" }
+        { "target": "process-instance", "type": "审批", "label": "自采申请提交审批（updateRequisitionAudit）", "via": "processInstanceId" },
+        { "target": "zc-system", "type": "定标", "label": "招采申请同步招采系统招标定标（INT_ZC_01/02）", "via": "requisitionCode" },
+        { "target": "hbc", "type": "锁占", "label": "申请提交后锁占 HBC 项目预算（INT_SZ_01）", "via": "INT_SZ_01" }
       ]
     },
     {
@@ -86,21 +88,35 @@
       "id": "requisition-status",
       "label": "采购申请状态",
       "parent_id": "purchase-requisition",
-      "description": "字母码枚举：D=草稿、P=审批中、A=已审批、R=已退回、C=已取消。查询时把状态词传给 query_purchase_requisitions 的 status 参数自动转码。"
+      "description": "字母码枚举（ham_ui 后端 RequisitionStatus）：D=草稿、U=已提交、P=审批中（自采）、B=招标中（招采）、F=招标失败（招采）、C=已取消、A=已批准、R=已退回、S=已生成合同。查询时把状态词传给 query_purchase_requisitions 的 status 参数自动转码。"
     },
     {
       "id": "purchase-contract",
       "label": "采购合同",
       "aliases": ["合同", "主合同"],
       "parent_id": "procurement-domain",
-      "description": "由采购申请生成（或无申请单直签）。核心字段：purchaseContractNumber、lawContractNumber(法务)、状态、净额/税额、供应商、合同期限。支持变更(change)与取消(cancel)。查询工具 query_purchase_contracts。",
+      "description": "由采购申请生成（或无申请单直签）。蓝图内控：合同金额不能超过采购申请金额；提交后释放申请锁占金额、重新锁占合同金额（INT_SZ_01）；生效后同步云报账（INT_BZ_01），并按组织类型分别调 SAP（新能源，INT_CG_01）或金蝶 ERP（莱士工厂，INT_CG_02）生成采购单号。核心字段：purchaseContractNumber、lawContractNumber(法务)、状态、净额/税额、供应商、合同期限。支持变更(change)与取消(cancel)。查询工具 query_purchase_contracts。",
       "tool": "query_purchase_contracts",
       "relations": [
         { "target": "contract-checklist", "type": "包含", "label": "合同包含资产清单明细", "via": "purchaseContractNumber" },
         { "target": "pay-node", "type": "分期", "label": "合同拆分多个支付节点", "via": "purchaseContractNumber" },
         { "target": "receiving-order", "type": "收货", "label": "按合同收货生成收货单", "via": "purchaseContractNumber+orgCode" },
         { "target": "payment-bill", "type": "报账", "label": "合同发起资产报账单", "via": "contractCode" },
-        { "target": "law", "type": "同步", "label": "采购合同提交法务系统（老省事）", "via": "lawContractNumber" }
+        { "target": "law", "type": "同步", "label": "采购合同提交法务系统（老省事）", "via": "lawContractNumber" },
+        { "target": "raas", "type": "同步", "label": "合同生效后同步云报账（INT_BZ_01）", "via": "INT_BZ_01" }
+      ]
+    },
+    {
+      "id": "expense-contract",
+      "label": "行政费用合同",
+      "aliases": ["费用合同", "行政合同", "costContract"],
+      "parent_id": "procurement-domain",
+      "description": "项目立项生效后直接创建的行政费用类合同，不经过采购申请。蓝图内控：合同金额不能超过项目剩余预算；需法务合同比对（无法务合同需填原因）；未生效可取消（cancelCostContract），生效后同步云报账。接口与采购合同同域（updateCostContractAudit/getAllByCode/cancelCostContract）。",
+      "api": "ham-purchasing/purchase-contract",
+      "relations": [
+        { "target": "parent-project", "type": "依据", "label": "依据已生效立项创建，金额受项目剩余预算约束", "via": "parentProjectCode" },
+        { "target": "law", "type": "比对", "label": "有法务合同的需与老省事合同比对", "via": "lawContractNumber" },
+        { "target": "raas", "type": "同步", "label": "费用合同生效后同步云报账", "via": "INT_BZ_01" }
       ]
     },
     {
@@ -145,7 +161,7 @@
       "label": "收货单",
       "aliases": ["资产到货", "收货"],
       "parent_id": "asset-domain",
-      "description": "按合同收货的凭证，receivingOrderCode；收货后资产进入台账。查询工具 query_assets_by_contract（filters 需 purchaseContractNumber+orgCode）。",
+      "description": "按合同收货的凭证，receivingOrderCode；收货后资产进入台账。蓝图内控：累计收货比例不能超过 100%；报账数量不能超过收货数量；审批通过后自动触发财务系统生成收货凭证（INT_SH_01：SAP 资产收货单/金蝶收料通知单或暂估应付，INT_SH_02 回写固定资产卡片）。查询工具 query_assets_by_contract（filters 需 purchaseContractNumber+orgCode）。",
       "tool": "query_assets_by_contract",
       "relations": [
         { "target": "asset-ledger", "type": "生成", "label": "收货资产生成资产台账记录", "via": "objCode" },
@@ -181,10 +197,11 @@
       "label": "转资单",
       "aliases": ["转资", "资产转资"],
       "parent_id": "asset-domain",
-      "description": "在建工程转固的流程单据：预转资(prerecorded) → 待转资(capitalization) → 转资单(asset-transform-order)，审批后生成 SAP 凭证。接口 asset-transform-order。",
+      "description": "在建工程转固的流程单据：预转资(prerecorded) → 待转资(capitalization) → 转资单(asset-transform-order)，审批后生成 SAP 凭证。蓝图内控：收货后免安装且一次付款的直接生成固定资产卡片，否则生成在建资产卡片；在建资产满足付款完成 90% 或已线下安装并上传认证资料后可发起转资；台账状态随审批变为已预转资/已转资。接口 asset-transform-order。",
       "api": "ham-assets/asset-transform-order",
       "relations": [
-        { "target": "sap", "type": "生成", "label": "转资生成 SAP 资产凭证", "via": "transformDetailCreatePurchaseOrder" }
+        { "target": "sap", "type": "生成", "label": "转资生成 SAP 资产凭证", "via": "transformDetailCreatePurchaseOrder" },
+        { "target": "image-system", "type": "归档", "label": "转资完成后附件上传影像系统归档并回传", "via": "archiveCallback" }
       ]
     },
     {
@@ -447,7 +464,32 @@
       "label": "外部系统集成",
       "aliases": ["集成域"],
       "parent_id": "ham-business",
-      "description": "资产中台与周边系统的集成关系：HBC 立项、NC 财务、SAP 转固、法务合同、EAM、RAAS 报账、ihaier 移动端。"
+      "description": "资产中台与周边系统的集成关系：HBC 立项与预算锁占、招采定标、NC 财务、SAP/金蝶ERP 转固、法务合同、云报账、影像归档、EAM、ihaier 移动端；另有 MDM（供应商主数据）与组织中心（组织架构）两个上游主数据源（蓝图集成清单）。"
+    },
+    {
+      "id": "zc-system",
+      "label": "招采系统",
+      "aliases": ["招采中心", "招采"],
+      "parent_id": "integration-domain",
+      "description": "集团招采平台：招采类型的采购申请提交后同步招采系统招标定标（INT_ZC_01），定标结果回传 HAM 更新申请单并按定标金额重新锁占 HBC 预算（INT_ZC_02/INT_SZ_02）；招采申请在资产中台不走审批流、不可取消。中台侧主数据：base-zc-info。",
+      "api": "ham-basedata/base-zc-info"
+    },
+    {
+      "id": "image-system",
+      "label": "影像系统",
+      "aliases": ["影像"],
+      "parent_id": "integration-domain",
+      "description": "影像档案平台（蓝图集成清单）：合同文本影像查看；转资完成后附件上传归档并接收归档回传。"
+    },
+    {
+      "id": "kingdee-erp",
+      "label": "金蝶ERP",
+      "aliases": ["金蝶", "ERP"],
+      "parent_id": "integration-domain",
+      "description": "莱士工厂侧 ERP（蓝图集成清单）：合同生效生成 ERP 采购单号（INT_CG_02）；收货后生成收料通知单/暂估应付单与固定/在建资产卡片并回写（INT_SH_01/02）。",
+      "relations": [
+        { "target": "receiving-order", "type": "生成", "label": "收货审批后生成收料通知单并回写资产卡片", "via": "INT_SH_01/02" }
+      ]
     },
     {
       "id": "hbc",
@@ -470,7 +512,7 @@
       "label": "SAP系统",
       "aliases": ["SAP"],
       "parent_id": "integration-domain",
-      "description": "SAP 财务核心：合同清单生成采购订单/固定资产卡片，转资生成资产凭证；失败进 sap-error 重试。",
+      "description": "SAP 财务核心（新能源组织侧，蓝图 INT_CG_01）：合同清单生成采购订单/固定资产卡片，转资生成资产凭证；失败进 sap-error 重试。",
       "api": "ham-assets/sap-error"
     },
     {
@@ -492,9 +534,9 @@
     {
       "id": "raas",
       "label": "RAAS报账",
-      "aliases": ["报账系统"],
+      "aliases": ["报账系统", "云报账"],
       "parent_id": "integration-domain",
-      "description": "费用报账平台（ics-raas）：资产报账/付款列表与详情跳转。",
+      "description": "费用报账平台（ics-raas，蓝图称云报账）：合同生效后同步合同信息（INT_BZ_01）；资产报账单在中台创建草稿后到云报账上传发票稽核（INT_BZ_01/02），草稿可退回中台重新编辑。",
       "api": "ics-raas"
     },
     {

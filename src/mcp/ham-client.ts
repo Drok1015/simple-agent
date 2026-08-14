@@ -35,13 +35,35 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
   "9": "项目生效",
 };
 
-/** 采购申请状态字母码（ham_ui requisitionStatus；D=草稿 为源码确认，其余为流程态）。 */
+/**
+ * 采购申请状态字母码（ham_ui views/procurement-manage/application/index.vue 中的后端枚举）：
+ * D=草稿、U=已提交、P=审批中（自采）、B=招标中（招采）、F=招标失败（招采）、
+ * C=已取消、A=已批准、R=已退回、S=已生成合同。
+ */
 export const REQUISITION_STATUS: Record<string, string> = {
   草稿: "D",
+  已提交: "U",
   审批中: "P",
-  已审批: "A",
-  已退回: "R",
+  招标中: "B",
+  招标失败: "F",
   已取消: "C",
+  已审批: "A",
+  已批准: "A",
+  已退回: "R",
+  已生成合同: "S",
+};
+
+/** 采购申请状态码 → 可读标签（与 ham_ui 列表页 tag 一致）。 */
+export const REQUISITION_STATUS_LABELS: Record<string, string> = {
+  D: "草稿",
+  U: "已提交",
+  P: "审批中",
+  B: "招标中",
+  F: "招标失败",
+  C: "已取消",
+  A: "已批准",
+  R: "已退回",
+  S: "已生成合同",
 };
 
 export class HamApiError extends Error {

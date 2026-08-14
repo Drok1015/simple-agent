@@ -5,7 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import { HamClient, PROJECT_STATUS_LABELS, normalizePage } from "./ham-client.js";
+import { HamClient, PROJECT_STATUS_LABELS, REQUISITION_STATUS_LABELS, normalizePage } from "./ham-client.js";
 import { OntologyStore } from "./ontology.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -103,10 +103,10 @@ server.registerTool(
   "query_purchase_requisitions",
   {
     description:
-      "查询采购申请单列表（真实接口 ham-purchasing/purchase-requisition/page）。可按状态词（草稿/审批中/已审批/已退回/已取消，自动转字母码）或字段过滤。常用 filters 字段：requisitionCode、requisitionName、projectCode、orgCode、supplierCode。",
+      "查询采购申请单列表（真实接口 ham-purchasing/purchase-requisition/page）。可按状态词（草稿/已提交/审批中/招标中/招标失败/已批准/已退回/已取消/已生成合同，自动转字母码）或字段过滤。常用 filters 字段：requisitionCode、requisitionName、projectCode、orgCode、supplierCode。",
     inputSchema: {
       ...pageInput,
-      status: z.string().optional().describe("采购申请状态词，如 草稿、审批中、已审批"),
+      status: z.string().optional().describe("采购申请状态词，如 草稿、审批中、招标中、已批准"),
       filters: z.record(z.string(), z.unknown()).optional().describe("透传给后端的过滤字段"),
     },
   },
@@ -225,14 +225,19 @@ function decorateProject(row: unknown) {
   };
 }
 
-/** 采购申请记录：挑出关键业务字段，原始数据放 raw。 */
+/** 采购申请记录：状态码转可读标签，挑出关键业务字段，原始数据放 raw。 */
 function decorateRequisition(row: unknown) {
   if (!row || typeof row !== "object") return row;
   const record = row as Record<string, unknown>;
+  const status = record.requisitionStatus;
+  const label =
+    (typeof status === "string" || typeof status === "number") && REQUISITION_STATUS_LABELS[String(status)]
+      ? REQUISITION_STATUS_LABELS[String(status)]
+      : status;
   return {
     requisition_code: record.requisitionCode,
     requisition_name: record.requisitionName,
-    status: record.requisitionStatus,
+    status: label,
     project_code: record.projectCode,
     project_name: record.projectName,
     org_code: record.orgCode,

@@ -19,8 +19,12 @@ describe("HamClient 状态归一化", () => {
 
   it("采购状态词转字母码", () => {
     expect(HamClient.normalizeRequisitionStatus("草稿")).toBe("D");
+    expect(HamClient.normalizeRequisitionStatus("已提交")).toBe("U");
     expect(HamClient.normalizeRequisitionStatus("审批中")).toBe("P");
+    expect(HamClient.normalizeRequisitionStatus("招标中")).toBe("B");
+    expect(HamClient.normalizeRequisitionStatus("招标失败")).toBe("F");
     expect(HamClient.normalizeRequisitionStatus("已审批")).toBe("A");
+    expect(HamClient.normalizeRequisitionStatus("已生成合同")).toBe("S");
     expect(HamClient.normalizeRequisitionStatus("W")).toBe("W");
   });
 

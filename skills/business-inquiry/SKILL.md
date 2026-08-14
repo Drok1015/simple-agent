@@ -18,10 +18,11 @@ allowed-tools: query_parent_projects query_child_projects query_purchase_requisi
 ## 采购查询
 
 1. “采购单/采购申请/PR”用 `query_purchase_requisitions`；按采购编码查时把 requisitionCode 放进 filters。
-2. 状态词（草稿、审批中、已审批、已退回、已取消）传 status 参数，自动转字母码。
-3. “合同”用 `query_purchase_contracts`（filters 传 contractCode/projectCode）。
-4. “合同下有哪些资产”用 `query_assets_by_contract`，filters 必须同时传 `purchaseContractNumber`（合同号）和 `orgCode`（公司编码）；如果用户只给了合同号，先 `query_purchase_contracts` 查出 orgCode 再查资产。
-5. 采购链路：子项目（canStart=Y）→ 采购申请 → 采购合同 → 支付节点/收货资产。
+2. 状态词（草稿、已提交、审批中、招标中、招标失败、已批准、已退回、已取消、已生成合同）传 status 参数，自动转字母码。
+3. 采购申请分两类：自采在资产中台走审批流，合同生效前可取消；招采同步招采系统定标，不在中台审批、不可取消。
+4. “合同”用 `query_purchase_contracts`（filters 传 contractCode/projectCode）；行政费用合同不经过采购申请，依据已生效立项直接创建。
+5. “合同下有哪些资产”用 `query_assets_by_contract`，filters 必须同时传 `purchaseContractNumber`（合同号）和 `orgCode`（公司编码）；如果用户只给了合同号，先 `query_purchase_contracts` 查出 orgCode 再查资产。
+6. 采购链路：子项目（canStart=Y）→ 采购申请（锁占 HBC 预算）→ 采购合同 → 支付节点/收货资产。
 
 ## 不确定用哪个工具时
 
