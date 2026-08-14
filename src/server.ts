@@ -10,6 +10,7 @@ import { AgentRuntime } from "./agent-runtime.js";
 import { projectRoot, settings } from "./config.js";
 import { toPublicAgentError } from "./errors.js";
 import { ModelRegistry, modelNameSchema } from "./model-registry.js";
+import { OntologyStore } from "./mcp/ontology.js";
 
 const chatSchema = z.object({
   message: z.string().trim().min(1).max(8000),
@@ -19,6 +20,10 @@ const switchModelSchema = z.object({ model: modelNameSchema });
 
 const app = Fastify({ logger: true });
 const modelRegistry = new ModelRegistry(path.join(projectRoot, "models.json"), settings.modelName);
+const ontologyStore = new OntologyStore(
+  path.join(projectRoot, "ontology.json"),
+  path.join(projectRoot, "ontology.seed.json"),
+);
 const initialModels = await modelRegistry.load();
 const runtime = new AgentRuntime(initialModels.activeModel);
 await runtime.start();
@@ -44,6 +49,31 @@ app.get("/api/health", async () => ({
   model: runtime.modelName,
   mcp_tools: runtime.toolNames,
 }));
+
+// 本体可视化数据：每次请求都读盘，能看到 MCP 子进程在会话中写入的最新本体。
+app.get("/api/ontology", async (request, reply) => {
+  try {
+    const [graph, seedIds] = await Promise.all([
+      ontologyStore.getGraph(),
+      ontologyStore.seedConceptIds(),
+    ]);
+    return { ...graph, seed_concept_ids: seedIds };
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send({ detail: `读取本体失败：${toPublicAgentError(error)}` });
+  }
+});
+
+app.post("/api/ontology/reset", async (request, reply) => {
+  try {
+    return await ontologyStore.reset();
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send({ detail: `重置本体失败：${toPublicAgentError(error)}` });
+  }
+});
+
+app.get("/ontology", async (_request, reply) => reply.redirect("/ontology.html"));
 
 app.get("/api/config", async () => {
   const registry = modelRegistry.snapshot();

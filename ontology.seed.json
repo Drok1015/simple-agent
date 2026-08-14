@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "concepts": [
+    {
+      "id": "equipment",
+      "label": "设备",
+      "parent_id": null,
+      "description": "企业资产申报中所有设备类资产的根概念。"
+    },
+    {
+      "id": "power-equipment",
+      "label": "动力设备",
+      "parent_id": "equipment",
+      "description": "为生产提供动力源的设备，例如压缩空气、电力驱动设备。"
+    },
+    {
+      "id": "air-compressor",
+      "label": "空压机",
+      "aliases": ["空气压缩机"],
+      "parent_id": "power-equipment",
+      "description": "将机械能转化为气体压力能的设备，常见于工厂气源站。"
+    },
+    {
+      "id": "electric-motor",
+      "label": "电动机",
+      "aliases": ["电机"],
+      "parent_id": "power-equipment",
+      "description": "将电能转化为机械能的驱动设备。"
+    },
+    {
+      "id": "hvac",
+      "label": "暖通设备",
+      "aliases": ["HVAC"],
+      "parent_id": "equipment",
+      "description": "供暖、通风与空气调节相关设备。"
+    },
+    {
+      "id": "chiller",
+      "label": "冷水机组",
+      "aliases": ["冷冻机"],
+      "parent_id": "hvac",
+      "description": "为空调系统提供冷冻水的集中冷源设备。"
+    },
+    {
+      "id": "ahu",
+      "label": "空调末端",
+      "parent_id": "hvac",
+      "description": "布置在各个区域、直接处理空气的末端设备，例如空调箱、风机盘管。"
+    },
+    {
+      "id": "post-processing",
+      "label": "后处理设备",
+      "aliases": ["压缩空气后处理"],
+      "parent_id": "equipment",
+      "description": "对压缩空气进行净化、干燥、储存等二次处理的设备。"
+    },
+    {
+      "id": "air-tank",
+      "label": "储气罐",
+      "parent_id": "post-processing",
+      "description": "储存压缩空气、稳定管路压力的压力容器。"
+    }
+  ],
+  "instances": [
+    {
+      "id": "asset-001",
+      "label": "螺杆空压机 A",
+      "concept_id": "air-compressor",
+      "order_id": "SO-1001"
+    },
+    {
+      "id": "asset-002",
+      "label": "离心空压机 B",
+      "concept_id": "air-compressor",
+      "order_id": "SO-1001"
+    },
+    {
+      "id": "asset-003",
+      "label": "冷水机组 1 号",
+      "concept_id": "chiller",
+      "order_id": "SO-1002"
+    },
+    {
+      "id": "asset-004",
+      "label": "空调箱 2 号",
+      "concept_id": "ahu",
+      "order_id": "SO-1002"
+    },
+    {
+      "id": "asset-005",
+      "label": "储气罐 C",
+      "concept_id": "air-tank",
+      "order_id": "SO-1001"
+    }
+  ]
+}

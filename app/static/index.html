@@ -476,6 +476,17 @@
       .draft-field strong { display: block; margin-top: 3px; color: #435c54; font-size: 9px; font-weight: 560; overflow-wrap: anywhere; }
       .draft-warning { margin-top: 10px; padding-top: 9px; display: flex; align-items: center; gap: 6px; border-top: 1px solid #e2ece8; color: #788d85; }
 
+      .concept-card { padding: 12px; border: 1px solid #dbe5f3; border-radius: 10px; background: #f7fafe; }
+      .concept-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .concept-head strong { color: #25405f; font-size: 12px; }
+      .concept-path { margin-top: 7px; color: #7d8ea3; font-size: 10px; letter-spacing: 0.02em; }
+      .concept-desc { margin-top: 7px; color: #5a6a80; font-size: 10.5px; line-height: 1.6; }
+      .concept-aliases { margin-top: 6px; color: #7d8ea3; font-size: 10px; }
+      .concept-children { margin-top: 6px; color: #7d8ea3; font-size: 10px; }
+      .asset-list { margin-top: 9px; display: grid; gap: 6px; }
+      .asset { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border: 1px solid #e5ebf2; border-radius: 8px; background: #fff; }
+      .asset strong { color: #2c3d55; font-size: 10.5px; font-weight: 620; }
+
       .raw-result { margin: 0; max-height: 160px; overflow: auto; color: #647184; font: 9px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
       .tool-error { color: #b74b4b; }
 
@@ -606,10 +617,10 @@
           <span class="nav-icon">▤</span>
           <span class="nav-copy"><span class="nav-title">资产申报草稿</span></span>
         </div>
-        <div class="nav-item">
-          <span class="nav-icon">◇</span>
-          <span class="nav-copy"><span class="nav-title">MCP 业务工具</span></span>
-        </div>
+        <a class="nav-item" href="/ontology" style="text-decoration: none;">
+          <span class="nav-icon">◈</span>
+          <span class="nav-copy"><span class="nav-title">本体浏览器</span><span class="nav-subtitle">查看分类树与会话建设</span></span>
+        </a>
 
         <div class="sidebar-bottom">
           <div class="model-switcher">
@@ -702,6 +713,10 @@
         query_orders: { label: "查询业务订单", description: "在业务系统中匹配订单信息" },
         get_asset_form: { label: "读取资产申报表单", description: "获取字段规则和订单建议值" },
         prepare_asset_draft: { label: "准备资产申报草稿", description: "校验字段并生成未提交草稿" },
+        search_ontology: { label: "查询本体概念", description: "读取概念定义、分类链与实例" },
+        query_orders_by_concept: { label: "按概念语义查询订单", description: "把概念展开为子类后聚合订单" },
+        add_ontology_concept: { label: "建设本体概念", description: "新增概念并挂到分类树下" },
+        get_ontology: { label: "读取本体全图", description: "浏览全部概念与实例" },
       };
 
       const fieldLabels = {
@@ -730,6 +745,12 @@
               </button>
               <button class="starter" type="button" data-prompt="根据 SO-1001 准备资产申报草稿，资产名称改为空压机 A">
                 <span class="starter-icon">▤</span><strong>准备申报草稿</strong><span>生成字段预览，不会正式提交</span>
+              </button>
+              <button class="starter" type="button" data-prompt="空压机属于哪类资产？顺便帮我查一下动力设备相关的订单">
+                <span class="starter-icon">◈</span><strong>本体语义查询</strong><span>概念分类链 + 按类别查订单</span>
+              </button>
+              <button class="starter" type="button" data-prompt="帮我在本体里新增概念：冷干机，父类是后处理设备，并关联订单 SO-1001">
+                <span class="starter-icon">＋</span><strong>会话中建设本体</strong><span>新增概念后立即影响查询</span>
               </button>
             </div>
           </div>`;
@@ -840,12 +861,149 @@
         });
       }
 
+      function conceptCard(concept) {
+        const card = document.createElement("div");
+        card.className = "concept-card";
+        const head = document.createElement("div");
+        head.className = "concept-head";
+        const title = document.createElement("strong");
+        title.textContent = concept.label;
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = "本体概念";
+        head.append(title, tag);
+
+        const path = document.createElement("div");
+        path.className = "concept-path";
+        path.textContent = (concept.path ?? []).map((node) => node.label).join("  ›  ");
+
+        const desc = document.createElement("div");
+        desc.className = "concept-desc";
+        desc.textContent = concept.description || "";
+
+        card.append(head, path);
+        if (concept.description) card.append(desc);
+
+        const aliases = concept.aliases ?? [];
+        if (aliases.length) {
+          const aliasRow = document.createElement("div");
+          aliasRow.className = "concept-aliases";
+          aliasRow.textContent = `别名：${aliases.join("、")}`;
+          card.append(aliasRow);
+        }
+
+        const children = concept.children ?? [];
+        if (children.length) {
+          const childRow = document.createElement("div");
+          childRow.className = "concept-children";
+          childRow.textContent = `子类：${children.map((child) => child.label).join("、")}`;
+          card.append(childRow);
+        }
+
+        const instances = concept.instances ?? [];
+        if (instances.length) {
+          const list = document.createElement("div");
+          list.className = "asset-list";
+          instances.forEach((instance) => {
+            const row = document.createElement("div");
+            row.className = "asset";
+            const name = document.createElement("strong");
+            name.textContent = instance.label;
+            const tag = document.createElement("span");
+            tag.className = "tag";
+            tag.textContent = instance.order_id;
+            row.append(name, tag);
+            list.appendChild(row);
+          });
+          card.append(list);
+        }
+        return card;
+      }
+
+      function renderOntologySearch(container, output) {
+        if (!output || typeof output !== "object") return false;
+        if (output.found && output.concept) {
+          container.appendChild(conceptCard(output.concept));
+          return true;
+        }
+        const miss = document.createElement("div");
+        miss.className = "concept-card";
+        miss.textContent = output.suggestions?.length
+          ? `本体中没有找到该概念。可用概念：${output.suggestions.join("、")}`
+          : "本体中没有找到该概念。";
+        container.appendChild(miss);
+        return true;
+      }
+
+      function renderSemanticQuery(container, output) {
+        if (!output || typeof output !== "object" || !output.found) return false;
+        const summary = document.createElement("div");
+        summary.className = "concept-card";
+        container.appendChild(summary);
+
+        const concept = output.concept;
+        const pathLine = document.createElement("div");
+        pathLine.className = "concept-path";
+        pathLine.textContent = `语义扩展：${(output.expansion ?? []).join("、")}`;
+        const metaLine = document.createElement("div");
+        metaLine.className = "concept-desc";
+        metaLine.textContent = `按「${concept?.label ?? ""}」命中 ${output.assets?.length ?? 0} 个实例、${output.order_ids?.length ?? 0} 个订单`;
+        summary.append(pathLine, metaLine);
+
+        const assets = output.assets ?? [];
+        if (assets.length) {
+          const list = document.createElement("div");
+          list.className = "asset-list";
+          assets.forEach((asset) => {
+            const row = document.createElement("div");
+            row.className = "asset";
+            const name = document.createElement("strong");
+            name.textContent = `${asset.label}（${asset.concept}）`;
+            const tag = document.createElement("span");
+            tag.className = "tag";
+            tag.textContent = asset.order_id;
+            row.append(name, tag);
+            list.appendChild(row);
+          });
+          container.appendChild(list);
+        }
+
+        if (output.orders && Array.isArray(output.orders.items)) {
+          renderOrderResult(container, output.orders);
+        }
+        return true;
+      }
+
+      function renderAddConcept(container, output) {
+        if (!output || typeof output !== "object") return false;
+        if (output.created && output.concept) {
+          const card = conceptCard(output.concept);
+          const foot = document.createElement("div");
+          foot.className = "concept-children";
+          foot.textContent = `已写入 ${output.persisted_to}，后续语义查询立即生效`;
+          card.append(foot);
+          container.appendChild(card);
+          return true;
+        }
+        if (typeof output.reason === "string") {
+          const miss = document.createElement("div");
+          miss.className = "concept-card";
+          miss.textContent = `建设被拒绝：${output.reason}`;
+          container.appendChild(miss);
+          return true;
+        }
+        return false;
+      }
+
       function renderToolOutput(container, name, output) {
         container.innerHTML = "";
         const rendered =
           (name === "query_orders" && renderOrderResult(container, output)) ||
           (name === "prepare_asset_draft" && renderDraftResult(container, output)) ||
-          (name === "get_asset_form" && renderFormResult(container, output));
+          (name === "get_asset_form" && renderFormResult(container, output)) ||
+          (name === "search_ontology" && renderOntologySearch(container, output)) ||
+          (name === "query_orders_by_concept" && renderSemanticQuery(container, output)) ||
+          (name === "add_ontology_concept" && renderAddConcept(container, output));
         if (rendered) return;
 
         const raw = document.createElement("pre");
