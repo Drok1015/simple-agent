@@ -7,7 +7,6 @@ import { ChatOpenAI } from "@langchain/openai";
 import { createDeepAgent, FilesystemBackend } from "deepagents";
 
 import { projectRoot, settings } from "./config.js";
-import { resolveMcpSseUrl } from "./mcp/debug-client.js";
 import {
   projectProtocolEvent,
   type AgentStreamEvent,
@@ -26,7 +25,6 @@ const systemPrompt = `
 7. 涉及业务术语、分类或"该用哪个工具"时先用 search_ontology 查本体，按 suggested_call 选择工具与参数，不要凭记忆猜。
 8. 用户要求新增分类概念时使用 add_ontology_concept；工具返回拒绝原因时如实转述，不要自行编造概念。
 9. 查询结果带分页信息（total/has_more）时主动告知用户还有多少条，可翻页。
-10. 额外接入了远程 MCP 工具；当用户明确要求调用远程 MCP，或需求与远程工具描述匹配时直接调用。远程工具结果同样不得编造。
 `.trim();
 
 type DeepAgent = Awaited<ReturnType<typeof createDeepAgent>>;
@@ -64,11 +62,6 @@ export class AgentRuntime {
             path.join(projectRoot, "node_modules", "tsx", "dist", "cli.mjs"),
             path.join(projectRoot, "src/mcp/server.ts"),
           ],
-        },
-        remote: {
-          transport: "sse",
-          url: resolveMcpSseUrl(settings.mcpDebugUrl).toString(),
-          reconnect: { enabled: true, maxAttempts: 3, delayMs: 1_000 },
         },
       },
       onConnectionError: "ignore",
