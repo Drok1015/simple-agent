@@ -10,6 +10,7 @@ import { AgentRuntime } from "./agent-runtime.js";
 import { projectRoot, settings } from "./config.js";
 import { toPublicAgentError } from "./errors.js";
 import { ModelRegistry, modelNameSchema } from "./model-registry.js";
+import { McpDebugClient } from "./mcp/debug-client.js";
 import { OntologyStore } from "./mcp/ontology.js";
 
 const chatSchema = z.object({
@@ -17,6 +18,10 @@ const chatSchema = z.object({
   thread_id: z.string().min(1).max(128).optional(),
 });
 const switchModelSchema = z.object({ model: modelNameSchema });
+const callMcpToolSchema = z.object({
+  tool: z.string().trim().min(1).max(128),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+});
 
 const app = Fastify({ logger: true });
 const modelRegistry = new ModelRegistry(path.join(projectRoot, "models.json"), settings.modelName);
@@ -24,6 +29,7 @@ const ontologyStore = new OntologyStore(
   path.join(projectRoot, "ontology.json"),
   path.join(projectRoot, "ontology.seed.json"),
 );
+const mcpDebugClient = new McpDebugClient(settings.mcpDebugUrl);
 const initialModels = await modelRegistry.load();
 const runtime = new AgentRuntime(initialModels.activeModel);
 await runtime.start();
@@ -48,9 +54,40 @@ app.get("/api/health", async () => ({
   status: "ok",
   model: runtime.modelName,
   mcp_tools: runtime.toolNames,
+  remote_mcp_url: mcpDebugClient.targetUrl,
   ham_api_base: settings.hamApiBase,
   ham_token_configured: settings.hamToken.trim().length > 0,
 }));
+
+app.get("/api/mcp-debug", async (request, reply) => {
+  try {
+    return await mcpDebugClient.inspect();
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(502).send({ detail: `连接远程 MCP 失败：${toPublicAgentError(error)}` });
+  }
+});
+
+app.post("/api/mcp-debug/call", async (request, reply) => {
+  const parsed = callMcpToolSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ detail: parsed.error.issues[0]?.message ?? "工具调用参数错误" });
+  }
+
+  try {
+    const startedAt = performance.now();
+    const result = await mcpDebugClient.callTool(parsed.data.tool, parsed.data.arguments);
+    return {
+      tool: parsed.data.tool,
+      arguments: parsed.data.arguments,
+      duration_ms: Math.round(performance.now() - startedAt),
+      result,
+    };
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(502).send({ detail: `MCP 工具调用失败：${toPublicAgentError(error)}` });
+  }
+});
 
 // 本体可视化数据：每次请求都读盘，能看到 MCP 子进程在会话中写入的最新本体。
 app.get("/api/ontology", async (request, reply) => {
@@ -76,6 +113,7 @@ app.post("/api/ontology/reset", async (request, reply) => {
 });
 
 app.get("/ontology", async (_request, reply) => reply.redirect("/ontology.html"));
+app.get("/mcp-debug", async (_request, reply) => reply.redirect("/mcp-debug.html"));
 
 app.get("/api/config", async () => {
   const registry = modelRegistry.snapshot();

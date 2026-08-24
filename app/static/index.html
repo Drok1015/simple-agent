@@ -621,6 +621,10 @@
           <span class="nav-icon">◇</span>
           <span class="nav-copy"><span class="nav-title">本体浏览器</span><span class="nav-subtitle">查看分类树与会话建设</span></span>
         </a>
+        <a class="nav-item" href="/mcp-debug" style="text-decoration: none;">
+          <span class="nav-icon">⌁</span>
+          <span class="nav-copy"><span class="nav-title">MCP 调试台</span><span class="nav-subtitle">连接、查看并调用远程工具</span></span>
+        </a>
 
         <div class="sidebar-bottom">
           <div class="model-switcher">
@@ -718,6 +722,8 @@
         search_ontology: { label: "查询本体概念", description: "读取概念定义、分类链与工具映射" },
         add_ontology_concept: { label: "建设本体概念", description: "新增概念并挂到分类树下" },
         get_ontology: { label: "读取本体全图", description: "浏览资产项目/采购分类体系" },
+        getNumberList: { label: "获取远程数字列表", description: "调用远程 MCP 返回固定数字列表" },
+        square: { label: "计算数字平方", description: "调用远程 MCP 计算传入数字的平方" },
       };
 
       const fieldLabels = {};

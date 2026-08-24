@@ -10,6 +10,8 @@
 - 模型列表和运行时切换：已使用过的模型会自动保留
 - MCP：把业务后端包装成受控 Tool（stdio 子进程）
 - Fastify：聊天 API 和本地 Web 页面
+- MCP 调试台：连接远程 SSE MCP、查看 Tool Schema、填写参数并执行调用
+- 远程 MCP Agent 接入：调试台目标同时注册到 Agent，模型可直接调用远程工具
 
 ## 架构
 
@@ -52,6 +54,8 @@ npm run dev
 ```
 
 打开 <http://127.0.0.1:8000>；本体可视化在 <http://127.0.0.1:8000/ontology>。
+MCP 调试台在 <http://127.0.0.1:8000/mcp-debug>，默认连接 `http://101.200.220.45:8050/sse`；可通过 `MCP_DEBUG_URL` 修改目标地址。
+同一远程 MCP 也会作为 `remote` 服务接入 Agent；当前可用工具会合并显示在 `GET /api/health` 的 `mcp_tools` 中。
 
 ## MCP 工具
 
@@ -109,3 +113,5 @@ npm run ontology:reset  # 重置运行时本体回种子状态
 - `POST /api/chat/stream`：通过 SSE 流式返回 `meta`、`token`、`tool`、`done` 或 `error` 事件
 - `GET /api/ontology`：读取当前本体（含会话中建设的内容）
 - `POST /api/ontology/reset`：重置运行时本体回种子状态
+- `GET /api/mcp-debug`：连接远程 MCP 并读取服务信息和工具列表
+- `POST /api/mcp-debug/call`：调用选定的远程 MCP 工具并返回原始结果与耗时
