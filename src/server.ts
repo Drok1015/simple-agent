@@ -1,6 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
@@ -18,6 +18,35 @@ const chatSchema = z.object({
   thread_id: z.string().min(1).max(128).optional(),
 });
 const switchModelSchema = z.object({ model: modelNameSchema });
+
+/** HAM token：JWT 三段式（header.payload.signature）。 */
+const hamTokenSchema = z.object({
+  token: z
+    .string()
+    .trim()
+    .regex(/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "token 不是合法的 JWT 格式"),
+});
+
+/** 解析 JWT payload 里的 exp/nbf（仅展示用，不验签）。 */
+function jwtTimes(token: string): { expires_at: string | null; not_before: string | null } {
+  try {
+    const payload = JSON.parse(
+      Buffer.from(token.split(".")[1]!, "base64url").toString("utf8"),
+    ) as { exp?: unknown; nbf?: unknown };
+    return {
+      expires_at: typeof payload.exp === "number" ? new Date(payload.exp * 1000).toISOString() : null,
+      not_before: typeof payload.nbf === "number" ? new Date(payload.nbf * 1000).toISOString() : null,
+    };
+  } catch {
+    return { expires_at: null, not_before: null };
+  }
+}
+
+function hamTokenStatus() {
+  const configured = settings.hamToken.trim().length > 0;
+  const times = configured ? jwtTimes(settings.hamToken) : { expires_at: null, not_before: null };
+  return { configured, ...times };
+}
 const callMcpToolSchema = z.object({
   tool: z.string().trim().min(1).max(128),
   arguments: z.record(z.string(), z.unknown()).default({}),
@@ -122,7 +151,32 @@ app.get("/api/config", async () => {
     models: registry.models,
     model_base_url: settings.modelBaseUrl,
     mcp_transport: "stdio",
+    ham_token: hamTokenStatus(),
   };
+});
+
+/** 更新 HAM token：写回 .env 并立即生效运行时（免重启）。 */
+app.post("/api/config/ham-token", async (request, reply) => {
+  const parsed = hamTokenSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ detail: parsed.error.issues[0]?.message ?? "token 无效" });
+  }
+  try {
+    const envPath = path.join(projectRoot, ".env");
+    let content = await readFile(envPath, "utf8");
+    if (/^HAM_TOKEN=/m.test(content)) {
+      content = content.replace(/^HAM_TOKEN=.*$/m, `HAM_TOKEN=${parsed.data.token}`);
+    } else {
+      content += `\nHAM_TOKEN=${parsed.data.token}\n`;
+    }
+    await writeFile(envPath, content, "utf8");
+    settings.hamToken = parsed.data.token;
+    request.log.info("HAM token 已更新（.env 写回 + 运行时生效）");
+    return hamTokenStatus();
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send({ detail: `token 更新失败：${toPublicAgentError(error)}` });
+  }
 });
 
 app.post("/api/config/model", async (request, reply) => {

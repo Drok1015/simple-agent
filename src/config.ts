@@ -39,4 +39,5 @@ export const settings = {
   hamToken: parsed.HAM_TOKEN,
   hamTenantId: parsed.HAM_TENANT_ID,
   mcpDebugUrl: parsed.MCP_DEBUG_URL,
-} as const;
+};
+// 注意：hamToken 运行时可通过 POST /api/config/ham-token 更新，不可用 as const 冻结
