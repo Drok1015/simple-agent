@@ -58,8 +58,12 @@ export class AgentRuntime {
       mcpServers: {
         business: {
           transport: "stdio",
-          command: "tsx",
-          args: [path.join(projectRoot, "src/mcp/server.ts")],
+          // 不能依赖 PATH 中的 tsx（systemd/生产环境下不可用），改用 node + cli.mjs 绝对路径启动
+          command: process.execPath,
+          args: [
+            path.join(projectRoot, "node_modules", "tsx", "dist", "cli.mjs"),
+            path.join(projectRoot, "src/mcp/server.ts"),
+          ],
         },
         remote: {
           transport: "sse",
