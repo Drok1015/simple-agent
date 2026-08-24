@@ -710,7 +710,17 @@
           }
         });
       })();
+      // 仅 iframe 嵌入时携带注入的 token；直接打开（顶层窗口）不带 header，
+      // 后端回退读取 .env 的 HAM_TOKEN，保证本地/直开调试可用。
+      function inIframe() {
+        try {
+          return window.self !== window.top;
+        } catch {
+          return true; // 跨域访问 window.top 会抛异常，按嵌入处理
+        }
+      }
       function hamTokenHeader() {
+        if (!inIframe()) return {};
         const token = sessionStorage.getItem(HAM_TOKEN_KEY);
         return token ? { "X-HAM-Token": token } : {};
       }
