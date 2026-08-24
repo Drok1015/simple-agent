@@ -686,6 +686,35 @@
 
     <script src="/vendor/markdown-it.min.js"></script>
     <script>
+      // ---------- 外部宿主（ham_ui iframe / URL 参数）注入 token ----------
+      // 优先级：postMessage 实时注入 > URL ?token=（读取后立即清除）> sessionStorage 记忆
+      const HAM_TOKEN_KEY = "ham_token";
+      function isAllowedOrigin(origin) {
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+        if (/^https?:\/\/[\w-]+\.haier\.net$/.test(origin)) return true;
+        return false;
+      }
+      (function setupTokenBridge() {
+        const url = new URL(location.href);
+        if (url.searchParams.has("token")) {
+          const fromUrl = url.searchParams.get("token");
+          if (fromUrl) sessionStorage.setItem(HAM_TOKEN_KEY, fromUrl);
+          url.searchParams.delete("token");
+          history.replaceState(null, "", url);
+        }
+        window.addEventListener("message", (event) => {
+          if (!isAllowedOrigin(event.origin)) return;
+          const data = event.data;
+          if (data && typeof data === "object" && data.type === "ham-token" && typeof data.token === "string" && data.token) {
+            sessionStorage.setItem(HAM_TOKEN_KEY, data.token);
+          }
+        });
+      })();
+      function hamTokenHeader() {
+        const token = sessionStorage.getItem(HAM_TOKEN_KEY);
+        return token ? { "X-HAM-Token": token } : {};
+      }
+
       // crypto.randomUUID 仅在安全上下文（HTTPS/localhost）可用，HTTP 公网访问需降级方案
       function newThreadId() {
         if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -1336,7 +1365,7 @@
         try {
           const response = await fetch("/api/chat/stream", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...hamTokenHeader() },
             body: JSON.stringify({ message: text, thread_id: threadId }),
             signal: activeAbortController.signal,
           });

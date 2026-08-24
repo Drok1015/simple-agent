@@ -141,6 +141,12 @@ app.post("/api/config/model", async (request, reply) => {
   }
 });
 
+/** 从请求头读取用户 token，未携带时回退 .env 配置（直接打开页面场景）。 */
+function requestHamToken(headerValue: unknown): string | undefined {
+  const token = typeof headerValue === "string" ? headerValue.trim() : "";
+  return token ? token : undefined;
+}
+
 app.post("/api/chat", async (request, reply) => {
   const parsed = chatSchema.safeParse(request.body);
   if (!parsed.success) {
@@ -148,8 +154,9 @@ app.post("/api/chat", async (request, reply) => {
   }
 
   const threadId = parsed.data.thread_id ?? randomUUID();
+  const hamToken = requestHamToken(request.headers["x-ham-token"]);
   try {
-    const result = await runtime.chat(parsed.data.message, threadId);
+    const result = await runtime.chat(parsed.data.message, threadId, hamToken);
     return {
       thread_id: threadId,
       answer: result.answer,
@@ -169,6 +176,7 @@ app.post("/api/chat/stream", async (request, reply) => {
   }
 
   const threadId = parsed.data.thread_id ?? randomUUID();
+  const hamToken = requestHamToken(request.headers["x-ham-token"]);
   const abortController = new AbortController();
 
   reply.hijack();
@@ -193,6 +201,7 @@ app.post("/api/chat/stream", async (request, reply) => {
       parsed.data.message,
       threadId,
       abortController.signal,
+      hamToken,
     )) {
       sendEvent(event.type, event);
     }

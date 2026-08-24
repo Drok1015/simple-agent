@@ -1,12 +1,14 @@
 import path from "node:path";
 
 import { isAIMessage, isToolMessage, type BaseMessage } from "@langchain/core/messages";
+import type { StructuredTool } from "@langchain/core/tools";
 import { MemorySaver } from "@langchain/langgraph";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { ChatOpenAI } from "@langchain/openai";
 import { createDeepAgent, FilesystemBackend } from "deepagents";
 
 import { projectRoot, settings } from "./config.js";
+import { hamTools } from "./ham-tools.js";
 import {
   projectProtocolEvent,
   type AgentStreamEvent,
@@ -67,7 +69,9 @@ export class AgentRuntime {
       onConnectionError: "ignore",
     });
 
-    const tools = await this.client.getTools();
+    const ontologyTools = await this.client.getTools();
+    // 本体工具（MCP 子进程）+ 业务查询工具（主进程，token 按请求注入）
+    const tools = [...ontologyTools, ...hamTools] as unknown as StructuredTool[];
     this.toolNames = tools.map((tool) => tool.name).sort();
     this.agent = await this.createAgent(this.activeModelName, tools);
   }
@@ -75,14 +79,15 @@ export class AgentRuntime {
   async switchModel(modelName: string) {
     if (modelName === this.activeModelName) return;
     if (!this.client) throw new Error("Agent runtime 尚未初始化");
-    const tools = await this.client.getTools();
+    const ontologyTools = await this.client.getTools();
+    const tools = [...ontologyTools, ...hamTools] as unknown as StructuredTool[];
     this.agent = await this.createAgent(modelName, tools);
     this.activeModelName = modelName;
   }
 
   private async createAgent(
     modelName: string,
-    tools: Awaited<ReturnType<MultiServerMCPClient["getTools"]>>,
+    tools: StructuredTool[],
   ) {
     const model = new ChatOpenAI({
       apiKey: settings.modelApiKey,
@@ -110,12 +115,12 @@ export class AgentRuntime {
     });
   }
 
-  async chat(message: string, threadId: string) {
+  async chat(message: string, threadId: string, hamToken?: string) {
     if (!this.agent) throw new Error("Agent runtime 尚未初始化");
 
     const result = await this.agent.invoke(
       { messages: [{ role: "user", content: message }] },
-      { configurable: { thread_id: threadId } },
+      { configurable: { thread_id: threadId, ...(hamToken ? { ham_token: hamToken } : {}) } },
     );
     const messages = result.messages as BaseMessage[];
     const answer = this.lastAnswer(messages);
@@ -134,6 +139,7 @@ export class AgentRuntime {
     message: string,
     threadId: string,
     signal?: AbortSignal,
+    hamToken?: string,
   ): AsyncGenerator<AgentStreamEvent> {
     if (!this.agent) throw new Error("Agent runtime 尚未初始化");
 
@@ -141,7 +147,7 @@ export class AgentRuntime {
       { messages: [{ role: "user", content: message }] },
       {
         version: "v3",
-        configurable: { thread_id: threadId },
+        configurable: { thread_id: threadId, ...(hamToken ? { ham_token: hamToken } : {}) },
         ...(signal ? { signal } : {}),
       },
     );
