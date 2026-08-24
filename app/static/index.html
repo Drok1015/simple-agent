@@ -686,7 +686,14 @@
 
     <script src="/vendor/markdown-it.min.js"></script>
     <script>
-      let threadId = crypto.randomUUID();
+      // crypto.randomUUID 仅在安全上下文（HTTPS/localhost）可用，HTTP 公网访问需降级方案
+      function newThreadId() {
+        if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+          return crypto.randomUUID();
+        }
+        return `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+      let threadId = newThreadId();
       let activeAbortController = null;
       let hasMessages = false;
       let runtimeToolCount = 0;
@@ -1283,7 +1290,7 @@
       function newConversation() {
         if (activeAbortController) activeAbortController.abort();
         activeAbortController = null;
-        threadId = crypto.randomUUID();
+        threadId = newThreadId();
         hasMessages = false;
         document.querySelector("#conversation-title").textContent = "新的业务咨询";
         updateThreadLabel();
