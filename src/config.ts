@@ -21,7 +21,7 @@ const envSchema = z.object({
   HAM_API_BASE: z.url("HAM_API_BASE 必须是合法的 URL").default("https://ham-test.haier.net"),
   HAM_TOKEN: z.string().default(""),
   HAM_TENANT_ID: z.string().default(""),
-  MCP_DEBUG_URL: z.url("MCP_DEBUG_URL 必须是合法的 URL").default("https://ham-test.haier.net:8086"),
+  MCP_DEBUG_URL: z.url("MCP_DEBUG_URL 必须是合法的 URL").default("http://10.249.244.76:31046/mcp"),
 });
 
 const parsed = envSchema.parse(process.env);
