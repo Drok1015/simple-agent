@@ -49,7 +49,7 @@ ssh "$REMOTE_HOST" "cd $REMOTE_DIR \
      done; \
   systemctl is-active $SERVICE"
 
-echo "==> 5/5 健康检查（$REMOTE_HOST:$APP_PORT）"
+echo "==> 5/5 健康检查 $REMOTE_HOST:$APP_PORT"
 sleep 2
 ssh "$REMOTE_HOST" "curl -s -m 10 http://127.0.0.1:$APP_PORT/api/health" | head -c 600
 echo
