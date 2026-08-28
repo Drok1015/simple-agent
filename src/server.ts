@@ -58,7 +58,7 @@ const ontologyStore = new OntologyStore(
   path.join(projectRoot, "ontology.json"),
   path.join(projectRoot, "ontology.seed.json"),
 );
-const mcpDebugClient = new McpDebugClient(settings.mcpDebugUrl);
+const mcpDebugClient = new McpDebugClient(settings.mcpDebugUrl, settings.hamToken);
 const initialModels = await modelRegistry.load();
 const runtime = new AgentRuntime(initialModels.activeModel);
 await runtime.start();
