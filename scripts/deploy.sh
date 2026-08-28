@@ -26,7 +26,8 @@ echo "==> 2/5 推送 $BRANCH 到 GitHub"
 env $PROXY git push origin "$BRANCH"
 
 echo "==> 3/5 同步代码到 $REMOTE_HOST:$REMOTE_DIR"
-# 不用 --delete：服务器端可能存在本地没有的运行时文件，多余文件无害
+# --chown：ssh 以 root 登录，rsync -a 会把本地 uid/gid(501) 原样带过去，
+# 服务运行用户 hamagent 将读不了新文件（EACCES），故强制修正属主
 rsync -az \
   --exclude node_modules \
   --exclude .env \
@@ -34,11 +35,19 @@ rsync -az \
   --exclude dist \
   --exclude large_tool_results \
   --exclude .DS_Store \
+  --chown=hamagent:hamagent \
+  --chmod=D755,F644 \
   ./ "$REMOTE_HOST:$REMOTE_DIR/"
 
 echo "==> 4/5 服务器安装依赖并重启 $SERVICE"
 ssh "$REMOTE_HOST" "cd $REMOTE_DIR && npm install --no-audit --no-fund --loglevel=error \
-  && sudo systemctl restart $SERVICE && sleep 2 && systemctl is-active $SERVICE"
+  && sudo systemctl restart $SERVICE \
+  && for i in \$(seq 1 15); do \
+       sleep 2; \
+       state=\$(systemctl is-active $SERVICE); \
+       [[ \$state == active ]] && break; \
+     done; \
+  systemctl is-active $SERVICE"
 
 echo "==> 5/5 健康检查（$REMOTE_HOST:$APP_PORT）"
 sleep 2
