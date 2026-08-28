@@ -35,7 +35,6 @@ rsync -az \
   --exclude dist \
   --exclude large_tool_results \
   --exclude .DS_Store \
-  --chmod=D755,F644 \
   ./ "$REMOTE_HOST:$REMOTE_DIR/"
 
 echo "==> 4/5 服务器安装依赖并重启 $SERVICE"
